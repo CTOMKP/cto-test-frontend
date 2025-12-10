@@ -1,0 +1,20 @@
+# Circle Programmable Wallets Configuration
+REACT_APP_CIRCLE_APP_ID=128be7e5-e077-5ed5-9281-eaa8b45fce4e
+REACT_APP_CIRCLE_API_KEY=TEST_API_KEY:da4473a762c09430aa795c2269e993f7:4bb214206ac0fe0f3416f18d973d1ed4
+REACT_APP_CIRCLE_ENVIRONMENT=sandbox
+REACT_APP_CIRCLE_API_BASE=https://api.circle.com/v1/w3s
+
+# Aptos Blockchain Configuration
+REACT_APP_APTOS_NODE_URL=https://fullnode.testnet.aptoslabs.com/v1
+REACT_APP_APTOS_NETWORK=testnet
+
+# Authentication API Configuration
+REACT_APP_BACKEND_URL=http://localhost:3001
+
+# Google OAuth Configuration
+REACT_APP_GOOGLE_CLIENT_ID=360848317756-hbdh4aogfukc37nuec91a0m802j60fcm.apps.googleusercontent.com
+
+# Backend Environment Variables
+CIRCLE_API_KEY=TEST_API_KEY:da4473a762c09430aa795c2269e993f7:4bb214206ac0fe0f3416f18d973d1ed4
+CIRCLE_APP_ID=128be7e5-e077-5ed5-9281-eaa8b45fce4e
+CIRCLE_API_BASE=https://api.circle.com/v1/w3s

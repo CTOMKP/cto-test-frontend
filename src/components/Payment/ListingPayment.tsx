@@ -1,0 +1,260 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { usePrivy } from '@privy-io/react-auth';
+import { paymentService } from '../../services/paymentService';
+import { privyPaymentService } from '../../services/privyPaymentService';
+import toast from 'react-hot-toast';
+
+interface ListingPaymentProps {
+  listingId: string;
+  listingTitle: string;
+  onPaymentComplete?: () => void;
+  onCancel?: () => void;
+}
+
+export const ListingPayment: React.FC<ListingPaymentProps> = ({
+  listingId,
+  listingTitle,
+  onPaymentComplete,
+  onCancel,
+}) => {
+  const navigate = useNavigate();
+  const { authenticated, user, sendTransaction } = usePrivy();
+  const [loading, setLoading] = useState(false);
+  const [pricing, setPricing] = useState<number>(50);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [selectedChain, setSelectedChain] = useState<string>('base');
+
+  const userId = localStorage.getItem('cto_user_email') || '';
+  const userIdNum = parseInt(localStorage.getItem('cto_user_id') || '0');
+  const isPrivyUser = authenticated && user;
+
+  useEffect(() => {
+    loadPricing();
+  }, []);
+
+  const loadPricing = async () => {
+    try {
+      const data = await paymentService.getPricing();
+      setPricing(data.pricing.listing);
+    } catch (error) {
+      console.error('Failed to load pricing:', error);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!userId) {
+      toast.error('Please login first');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (isPrivyUser && userIdNum > 0) {
+        // Privy payment flow
+        console.log('💳 Using Privy payment flow');
+        
+        const result = await privyPaymentService.payForListing({
+          userId: userIdNum,
+          listingId,
+          chain: selectedChain,
+        });
+
+        if (result.success) {
+          console.log('✅ Transaction data received:', result.transactionData);
+          toast.success('Signing transaction with Privy...');
+          setPaymentId(result.paymentId);
+
+          // Send transaction using Privy
+          try {
+            const txReceipt = await sendTransaction(result.transactionData.evmTransactionData);
+            console.log('✅ Transaction sent:', txReceipt);
+            
+            toast.success('Transaction submitted! Verifying...');
+            
+            // Verify payment
+            setTimeout(() => {
+              verifyPayment(result.paymentId);
+            }, 5000);
+          } catch (txError: any) {
+            console.error('Transaction failed:', txError);
+            toast.error('Transaction cancelled or failed');
+            setLoading(false);
+            return;
+          }
+        }
+      } else {
+        // Circle payment flow (legacy)
+        console.log('💳 Using Circle payment flow');
+        
+        const result = await paymentService.payForListing({
+          userId,
+          listingId,
+        });
+
+        if (result.success) {
+          toast.success('Payment initiated! Waiting for confirmation...');
+          setPaymentId(result.paymentId);
+          
+          setTimeout(() => {
+            verifyPayment(result.paymentId);
+          }, 10000);
+        }
+      }
+    } catch (error: any) {
+      console.error('Payment failed:', error);
+      toast.error(error.response?.data?.message || 'Payment failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyPayment = async (payId: string) => {
+    setVerifying(true);
+    try {
+      let result;
+      if (isPrivyUser) {
+        result = await privyPaymentService.verifyPayment(payId);
+      } else {
+        result = await paymentService.verifyPayment(payId, userId);
+      }
+      
+      if (result.payment?.status === 'COMPLETED') {
+        toast.success('Payment confirmed! Listing is now published!');
+        if (onPaymentComplete) onPaymentComplete();
+        setTimeout(() => {
+          navigate('/user-listings/mine');
+        }, 2000);
+      } else if (result.payment?.status === 'FAILED') {
+        toast.error('Payment failed. Please try again.');
+      } else {
+        toast.loading('Payment still processing. Please check back in a few minutes.');
+      }
+    } catch (error: any) {
+      console.error('Verification failed:', error);
+      toast.error('Failed to verify payment');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">
+          Pay for Listing
+        </h2>
+
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+          <p className="text-sm text-blue-700">
+            <strong>Listing:</strong> {listingTitle}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-gray-600">Listing Fee:</span>
+            <span className="text-2xl font-bold text-gray-800">${pricing} USDC</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            This payment will publish your listing on the marketplace.
+          </p>
+        </div>
+
+        {!paymentId ? (
+          <div className="space-y-3">
+            {isPrivyUser && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Chain for Payment
+                </label>
+                <select
+                  value={selectedChain}
+                  onChange={(e) => setSelectedChain(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="base">Base (Recommended)</option>
+                  <option value="polygon">Polygon</option>
+                  <option value="ethereum">Ethereum</option>
+                  <option value="arbitrum">Arbitrum</option>
+                  <option value="optimism">Optimism</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Choose which chain to pay from. Base has lowest fees.
+                </p>
+              </div>
+            )}
+            
+            <button
+              onClick={handlePayment}
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Processing...
+                </div>
+              ) : (
+                `Pay ${pricing} USDC`
+              )}
+            </button>
+
+            <button
+              onClick={onCancel}
+              disabled={loading}
+              className="w-full bg-gray-200 text-gray-700 font-semibold py-3 px-6 rounded-lg hover:bg-gray-300 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4">
+              <p className="text-sm text-yellow-700">
+                <strong>Payment initiated!</strong> Waiting for blockchain confirmation...
+              </p>
+              <p className="text-xs text-yellow-600 mt-2">
+                Payment ID: {paymentId.substring(0, 20)}...
+              </p>
+            </div>
+
+            <button
+              onClick={() => verifyPayment(paymentId)}
+              disabled={verifying}
+              className="w-full bg-green-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-green-700 transition-all disabled:opacity-50"
+            >
+              {verifying ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Verifying...
+                </div>
+              ) : (
+                'Check Payment Status'
+              )}
+            </button>
+
+            <p className="text-xs text-gray-500 text-center">
+              ⏱️ Payments typically confirm within 5-15 minutes
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <p className="text-xs text-gray-500">
+            <strong>Note:</strong> Ensure you have at least {pricing} USDC in your wallet before proceeding.
+            {isPrivyUser ? (
+              <span> Payment will be made from your {selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} Privy wallet.</span>
+            ) : (
+              <span> The payment will be deducted from your Circle wallet.</span>
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ListingPayment;
+

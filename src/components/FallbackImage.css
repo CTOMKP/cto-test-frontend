@@ -1,0 +1,8 @@
+/* FallbackImage base styles; Tailwind utilities still apply via className */
+.fallback-image {
+  width: var(--img-width, auto);
+  height: var(--img-height, auto);
+  object-fit: var(--img-object-fit, contain);
+  object-position: var(--img-object-position, center);
+  display: block;
+}
