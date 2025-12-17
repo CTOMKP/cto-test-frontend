@@ -16,7 +16,11 @@ interface ListingItem {
   name?: string | null;
   priceUsd?: number | null;
   change24h?: number | null;
+  change1h?: number | null;
+  change5m?: number | null;
+  change1m?: number | null;
   liquidityUsd?: number | null;
+  marketCap?: number | null;
   volume24h?: number | null;
   holders?: number | null;
   riskScore?: number | null;
@@ -33,6 +37,12 @@ interface ListingItem {
   metadata?: {
     market?: {
       logoUrl?: string | null;
+      priceChange?: {
+        m5?: number;
+        h1?: number;
+        h24?: number;
+      };
+      fdv?: number;
     };
   };
 }
@@ -92,14 +102,28 @@ export const ListingsPage: React.FC = () => {
       if (filters.mintAuthDisabled) params.set('mintAuthDisabled', 'true');
       if (filters.noRaiding) params.set('noRaiding', 'true');
       
-      const url = `${backendUrl}/api/listing/listings?${params.toString()}`;
+      const url = `${backendUrl}/api/v1/listing/listings?${params.toString()}`;
       const res = await axios.get(url);
-      setData(res.data);
+      // Handle wrapped response from TransformInterceptor: { data: {...}, statusCode, timestamp }
+      const responseData = res.data?.data || res.data || {};
+      setData({
+        page: responseData.page || 1,
+        limit: responseData.limit || 20,
+        total: responseData.total || 0,
+        items: Array.isArray(responseData.items) ? responseData.items : [],
+      });
 
       // fetch public user listings in parallel (simple pagination 1..)
       try {
-        const userRes = await axios.get(`${backendUrl}/api/user-listings?page=1&limit=12`);
-        setUserListData(userRes.data);
+        const userRes = await axios.get(`${backendUrl}/api/v1/user-listings?page=1&limit=12`);
+        // Handle wrapped response from TransformInterceptor
+        const userData = userRes.data?.data || userRes.data || {};
+        setUserListData({
+          page: userData.page || 1,
+          limit: userData.limit || 12,
+          total: userData.total || 0,
+          items: Array.isArray(userData.items) ? userData.items : [],
+        });
       } catch (e) {
         // ignore user listings error to not break main feed
       }
@@ -357,12 +381,14 @@ export const ListingsPage: React.FC = () => {
       if (q) params.set('q', q);
       params.set('page', String(nextPage));
       params.set('limit', String(limit));
-      const url = `${backendUrl}/api/listing/listings?${params.toString()}`;
+      const url = `${backendUrl}/api/v1/listing/listings?${params.toString()}`;
       const res = await axios.get(url);
       
-      // Preload images
-      if (res.data && res.data.items) {
-        res.data.items.forEach((item: ListingItem) => {
+      // Preload images - handle wrapped response from TransformInterceptor
+      const responseData = res.data?.data || res.data || {};
+      const items = Array.isArray(responseData.items) ? responseData.items : [];
+      if (items.length > 0) {
+        items.forEach((item: ListingItem) => {
           const src = (item?.logoUrl) || (item as any)?.metadata?.market?.logoUrl || (item as any)?.bannerUrl;
           if (src) {
             const img = new Image();
@@ -567,7 +593,7 @@ export const ListingsPage: React.FC = () => {
         {error && (
           <div className="bg-red-900 bg-opacity-20 text-red-400 border border-red-800 rounded p-3 mb-4 text-sm">{error}</div>
         )}
-        {data && (
+        {data && data.items && (
           <>
             <div className="flex items-center justify-between mb-4">
               <div className="text-sm text-gray-600">
@@ -591,20 +617,20 @@ export const ListingsPage: React.FC = () => {
                 <thead className="bg-gray-900">
                   <tr>
                     <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Price/USD</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Age</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Risk score</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">MC / Liq</th>
                     <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Holders</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Volume</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Age</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Price / 24%</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">1m%</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">5m%</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">1h%</th>
                     <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Community score</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">LP Burned</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Top 10</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Security</th>
-                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">24h %</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Risk score</th>
+                    <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Tier</th>
                   </tr>
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
-                  {data.items.map((it) => {
+                  {(data.items || []).map((it) => {
                     // Format price with appropriate precision
                     const formatPrice = (price: number | null | undefined) => {
                       if (price === null || price === undefined) return '--';
@@ -717,18 +743,83 @@ export const ListingsPage: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        <td className={`px-3 py-4 whitespace-nowrap text-right text-sm font-mono transition-all duration-300 ${
-                          priceChanges.get(it.contractAddress) === 'up' 
-                            ? 'text-green-400 font-bold animate-pulse' 
-                            : priceChanges.get(it.contractAddress) === 'down' 
-                            ? 'text-red-400 font-bold animate-pulse' 
-                            : 'text-white'
-                        }`}>
-                          {formatPrice(it.priceUsd)}
+                        {/* MC / Liq */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
+                          <div className="flex flex-col items-end">
+                            <div className="font-medium text-white">
+                              {it.marketCap ? formatVolume(it.marketCap) : '--'}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {it.liquidityUsd ? formatVolume(it.liquidityUsd) : '--'}
+                            </div>
+                          </div>
                         </td>
+                        {/* Holders */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
+                          {Number.isFinite(Number(it.holders)) && Number(it.holders) > 0 
+                            ? Number(it.holders).toLocaleString() 
+                            : <span className="text-gray-500 italic">N/A</span>}
+                        </td>
+                        {/* Age */}
                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
                           {getAge(it.updatedAt)}
                         </td>
+                        {/* Price / 24% */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm">
+                          <div className="flex flex-col items-end">
+                            <div className={`font-mono font-medium transition-all duration-300 ${
+                              priceChanges.get(it.contractAddress) === 'up' 
+                                ? 'text-green-400 font-bold animate-pulse' 
+                                : priceChanges.get(it.contractAddress) === 'down' 
+                                ? 'text-red-400 font-bold animate-pulse' 
+                                : 'text-white'
+                            }`}>
+                              {formatPrice(it.priceUsd)}
+                            </div>
+                            <div className={`text-xs font-medium ${
+                              Number(it.change24h || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {it.change24h ? (Number(it.change24h) >= 0 ? '+' : '') + it.change24h.toFixed(2) + '%' : '--'}
+                            </div>
+                          </div>
+                        </td>
+                        {/* 1m% */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm">
+                          <span className={Number(it.change1m || it?.metadata?.market?.priceChange?.m5 || 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            {it.change1m !== null && it.change1m !== undefined 
+                              ? (Number(it.change1m) >= 0 ? '+' : '') + it.change1m.toFixed(2) + '%'
+                              : it?.metadata?.market?.priceChange?.m5 !== null && it?.metadata?.market?.priceChange?.m5 !== undefined
+                              ? (Number(it.metadata.market.priceChange.m5) >= 0 ? '+' : '') + it.metadata.market.priceChange.m5.toFixed(2) + '%'
+                              : '0%'}
+                          </span>
+                        </td>
+                        {/* 5m% */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm">
+                          <span className={Number(it.change5m || it?.metadata?.market?.priceChange?.m5 || 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            {it.change5m !== null && it.change5m !== undefined 
+                              ? (Number(it.change5m) >= 0 ? '+' : '') + it.change5m.toFixed(2) + '%'
+                              : it?.metadata?.market?.priceChange?.m5 !== null && it?.metadata?.market?.priceChange?.m5 !== undefined
+                              ? (Number(it.metadata.market.priceChange.m5) >= 0 ? '+' : '') + it.metadata.market.priceChange.m5.toFixed(2) + '%'
+                              : '0%'}
+                          </span>
+                        </td>
+                        {/* 1h% */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm">
+                          <span className={Number(it.change1h || it?.metadata?.market?.priceChange?.h1 || 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            {it.change1h !== null && it.change1h !== undefined 
+                              ? (Number(it.change1h) >= 0 ? '+' : '') + it.change1h.toFixed(2) + '%'
+                              : it?.metadata?.market?.priceChange?.h1 !== null && it?.metadata?.market?.priceChange?.h1 !== undefined
+                              ? (Number(it.metadata.market.priceChange.h1) >= 0 ? '+' : '') + it.metadata.market.priceChange.h1.toFixed(2) + '%'
+                              : '0%'}
+                          </span>
+                        </td>
+                        {/* Community score - Currently disabled, will be based on user votes */}
+                        <td className="px-3 py-4 whitespace-nowrap text-right">
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-700 text-gray-400">
+                            N/A
+                          </span>
+                        </td>
+                        {/* Risk score */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
                           {(() => {
                             // Handle null riskScore (not scanned yet)
@@ -753,86 +844,34 @@ export const ListingsPage: React.FC = () => {
                             );
                           })()}
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
-                          {Number.isFinite(Number(it.holders)) && Number(it.holders) > 0 
-                            ? Number(it.holders).toLocaleString() 
-                            : <span className="text-gray-500 italic">N/A</span>}
-                        </td>
-                        <td className={`px-3 py-4 whitespace-nowrap text-right text-sm transition-all duration-300 ${
-                          volumeChanges.get(it.contractAddress) === 'up' 
-                            ? 'text-green-400 animate-pulse' 
-                            : volumeChanges.get(it.contractAddress) === 'down'
-                            ? 'text-red-400 animate-pulse'
-                            : 'text-gray-300'
-                        }`}>
-                          {formatVolume(it.volume24h)}
-                        </td>
+                        {/* Tier badge */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
-                          <div className="flex items-center justify-end">
-                            <div className="w-16 bg-gray-700 rounded-full h-2">
-                              {/* Show score or empty bar if missing */}
-                              {(() => {
-                                const score = Number.isFinite(Number(it.communityScore)) && Number(it.communityScore) > 0 
-                                  ? Number(it.communityScore) 
-                                  : 0;
-                                
-                                return (
-                                  <div 
-                                    className={`h-2 rounded-full ${
-                                      score > 70 ? 'bg-green-500' : 
-                                      score > 40 ? 'bg-yellow-500' : 
-                                      'bg-red-500'
-                                    }`}
-                                    style={{ width: `${score}%` }}
-                                  ></div>
-                                );
-                              })()}
-                            </div>
-                            <span className="ml-2 text-sm text-gray-300">
-                              {Number.isFinite(Number(it.communityScore)) && Number(it.communityScore) > 0 
-                                ? formatCommunityScore(it.communityScore) 
-                                : formatCommunityScore(0)}
-                            </span>
-                          </div>
-                        </td>
-                        {/* LP Burned */}
-                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
-                          {it.lpBurnedPercentage !== null && it.lpBurnedPercentage !== undefined 
-                            ? `${it.lpBurnedPercentage.toFixed(1)}%` 
-                            : '--'}
-                        </td>
-                        {/* Top 10 Holders */}
-                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
-                          {it.top10HoldersPercentage !== null && it.top10HoldersPercentage !== undefined 
-                            ? `${it.top10HoldersPercentage.toFixed(1)}%` 
-                            : '--'}
-                        </td>
-                        {/* Security Status */}
-                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm">
-                          <div className="flex flex-col items-end space-y-1">
-                            {it.mintAuthDisabled !== null && (
-                              <span className={`px-1 py-0.5 rounded text-xs ${
-                                it.mintAuthDisabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                              }`}>
-                                {it.mintAuthDisabled ? 'Mint Disabled' : 'Mint Enabled'}
+                          {(() => {
+                            const tier = (it.tier || '').toLowerCase();
+                            if (!tier || tier === 'none' || tier === '—') {
+                              return (
+                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-700 text-gray-400">
+                                  —
+                                </span>
+                              );
+                            }
+                            
+                            // Tier badge colors
+                            const tierColors: Record<string, { bg: string; text: string }> = {
+                              stellar: { bg: 'bg-purple-900', text: 'text-purple-200' },
+                              bloom: { bg: 'bg-blue-900', text: 'text-blue-200' },
+                              sprout: { bg: 'bg-green-900', text: 'text-green-200' },
+                              seed: { bg: 'bg-yellow-900', text: 'text-yellow-200' },
+                            };
+                            
+                            const colors = tierColors[tier] || { bg: 'bg-gray-700', text: 'text-gray-300' };
+                            
+                            return (
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${colors.bg} ${colors.text}`}>
+                                {tier.toUpperCase()}
                               </span>
-                            )}
-                            {it.raidingDetected !== null && (
-                              <span className={`px-1 py-0.5 rounded text-xs ${
-                                it.raidingDetected ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                              }`}>
-                                {it.raidingDetected ? 'Raiding Detected' : 'No Raiding'}
-                              </span>
-                            )}
-                            {it.mintAuthDisabled === null && it.raidingDetected === null && (
-                              <span className="text-gray-500 text-xs">--</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <span className={Number(it.change24h || 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            {it.change24h ? (Number(it.change24h) >= 0 ? '+' : '') + it.change24h.toFixed(2) + '%' : '--'}
-                          </span>
+                            );
+                          })()}
                         </td>
                       </tr>
                     );
