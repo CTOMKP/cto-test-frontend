@@ -68,7 +68,7 @@ export const ListingDetail: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await axios.get(`${backendUrl}/api/listing/${contractAddress}`);
+        const res = await axios.get(`${backendUrl}/api/v1/listing/${contractAddress}`);
         const body: PublicListing = res.data?.data || res.data;
 
         // If critical market fields are missing, try to enrich from public sources
@@ -365,7 +365,27 @@ export const ListingDetail: React.FC = () => {
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div className={`border rounded p-3 transition-all duration-300 ${isUpdated ? 'bg-green-50' : ''}`}>
               <div className="text-gray-500">Tier</div>
-              <div className="font-semibold">{(data as any)?.tier ?? (data as any)?.metadata?.tier ?? 'Bronze'}</div>
+              <div className="font-semibold">
+                {(() => {
+                  const tier = (data as any)?.tier || (data as any)?.metadata?.tier;
+                  if (!tier || tier === 'none' || tier === 'null' || tier === 'undefined' || tier === '' || tier === '—') {
+                    return <span className="text-gray-400">—</span>;
+                  }
+                  const tierLower = String(tier).trim().toLowerCase();
+                  const tierColors: Record<string, { bg: string; text: string }> = {
+                    stellar: { bg: 'bg-purple-100', text: 'text-purple-800' },
+                    bloom: { bg: 'bg-blue-100', text: 'text-blue-800' },
+                    sprout: { bg: 'bg-green-100', text: 'text-green-800' },
+                    seed: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+                  };
+                  const colors = tierColors[tierLower] || { bg: 'bg-gray-100', text: 'text-gray-800' };
+                  return (
+                    <span className={`px-2 py-1 inline-flex text-xs font-semibold rounded-full ${colors.bg} ${colors.text}`}>
+                      {tierLower.toUpperCase()}
+                    </span>
+                  );
+                })()}
+              </div>
             </div>
             <div className={`border rounded p-3 transition-all duration-300 ${isUpdated ? 'bg-green-50' : ''}`}>
               <div className="text-gray-500">Holders</div>
