@@ -816,7 +816,7 @@ export const ListingsPage: React.FC = () => {
                         {/* Community score - Currently disabled, will be based on user votes */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
                           <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-700 text-gray-400">
-                            N/A
+                            Coming Soon
                           </span>
                         </td>
                         {/* Risk score */}
@@ -847,8 +847,20 @@ export const ListingsPage: React.FC = () => {
                         {/* Tier badge */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
                           {(() => {
-                            const tier = (it.tier || '').toLowerCase();
-                            if (!tier || tier === 'none' || tier === '—') {
+                            // Get tier value and normalize it
+                            const rawTier = it.tier;
+                            if (!rawTier || rawTier === null || rawTier === undefined) {
+                              return (
+                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-700 text-gray-400">
+                                  —
+                                </span>
+                              );
+                            }
+                            
+                            const tier = String(rawTier).trim().toLowerCase();
+                            
+                            // Check for invalid tier values
+                            if (!tier || tier === 'none' || tier === 'null' || tier === 'undefined' || tier === '' || tier === '—' || tier === '----') {
                               return (
                                 <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-700 text-gray-400">
                                   —
