@@ -27,6 +27,7 @@ interface ListingItem {
   communityScore?: number | null;
   tier?: string | null;
   updatedAt?: string;
+  age?: string | null; // Token age from backend (e.g., "14d", "30d", "2h")
   logoUrl?: string | null;
   bannerUrl?: string | null;
   // New filter fields
@@ -682,32 +683,40 @@ export const ListingsPage: React.FC = () => {
                       return (volume / 1000000000).toFixed(1) + 'B';
                     };
                     
-                    // Calculate age from updatedAt or use placeholder
-                    const getAge = (date: string | undefined) => {
-                      if (!date) return '--';
-                      
-                      try {
-                        const timestamp = new Date(date).getTime();
-                        if (isNaN(timestamp)) return '--';
-                        
-                        const diff = Date.now() - timestamp;
-                        // Ensure diff is positive (future dates would give negative values)
-                        if (diff < 0) return '--';
-                        
-                        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-                        const hours = Math.floor(diff / (1000 * 60 * 60));
-                        
-                        if (days > 0) {
-                          return days + 'd';
-                        } else if (hours > 0) {
-                          return hours + 'h';
-                        } else {
-                          const minutes = Math.floor(diff / (1000 * 60));
-                          return Math.max(1, minutes) + 'm'; // Ensure at least 1 minute
-                        }
-                      } catch (e) {
-                        return '--';
+                    // Get age from backend (actual token age) or fallback to updatedAt calculation
+                    const getAge = (item: ListingItem) => {
+                      // Priority 1: Use backend-provided age (actual token age from creation)
+                      if (item.age && typeof item.age === 'string' && item.age.trim() !== '') {
+                        return item.age;
                       }
+                      
+                      // Priority 2: Fallback to calculating from updatedAt (time since last update)
+                      // This is less accurate but better than nothing
+                      if (item.updatedAt) {
+                        try {
+                          const timestamp = new Date(item.updatedAt).getTime();
+                          if (isNaN(timestamp)) return '--';
+                          
+                          const diff = Date.now() - timestamp;
+                          if (diff < 0) return '--';
+                          
+                          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                          const hours = Math.floor(diff / (1000 * 60 * 60));
+                          
+                          if (days > 0) {
+                            return days + 'd';
+                          } else if (hours > 0) {
+                            return hours + 'h';
+                          } else {
+                            const minutes = Math.floor(diff / (1000 * 60));
+                            return Math.max(1, minutes) + 'm';
+                          }
+                        } catch (e) {
+                          return '--';
+                        }
+                      }
+                      
+                      return '--';
                     };
                     
                     // Format risk score (0-100, higher = safer - matches repoanalyzer.io)
@@ -762,7 +771,7 @@ export const ListingsPage: React.FC = () => {
                         </td>
                         {/* Age */}
                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
-                          {getAge(it.updatedAt)}
+                          {getAge(it)}
                         </td>
                         {/* Price / 24% */}
                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm">
