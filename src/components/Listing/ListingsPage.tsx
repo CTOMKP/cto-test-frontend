@@ -765,9 +765,14 @@ export const ListingsPage: React.FC = () => {
                         </td>
                         {/* Holders */}
                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
-                          {Number.isFinite(Number(it.holders)) && Number(it.holders) > 0 
-                            ? Number(it.holders).toLocaleString() 
-                            : <span className="text-gray-500 italic">N/A</span>}
+                          {(() => {
+                            // Try multiple possible field names for holders
+                            const holderCount = it.holders ?? (it?.metadata as any)?.market?.holders ?? (it?.metadata as any)?.token?.holder_count ?? null;
+                            if (holderCount !== null && holderCount !== undefined && Number.isFinite(Number(holderCount)) && Number(holderCount) > 0) {
+                              return Number(holderCount).toLocaleString();
+                            }
+                            return <span className="text-gray-500 italic">N/A</span>;
+                          })()}
                         </td>
                         {/* Age */}
                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">

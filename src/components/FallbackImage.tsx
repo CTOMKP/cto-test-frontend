@@ -91,19 +91,18 @@ const FallbackImage: React.FC<Props> = ({ src, alt = '', className, onLoad, cust
   return (
     <div className={`relative ${className || ''}`} style={cssVars}>
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 rounded-full">
           <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
       
       {/* Always show a placeholder if no image or error */}
       {(!current || error) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 rounded-full z-10">
           <div className="flex flex-col items-center justify-center">
-            <svg className="w-8 h-8 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v8l4-2 4 2 4-2 4 2V6H4zm0 12h16v-2l-4-2-4 2-4-2-4 2v2z" />
+            <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
             </svg>
-            <div className="text-gray-500 text-xs mt-1">{alt || 'Image not available'}</div>
           </div>
         </div>
       )}
