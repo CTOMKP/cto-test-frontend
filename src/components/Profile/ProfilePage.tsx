@@ -14,6 +14,7 @@ import { circleWalletService } from '../../services/circleWallet';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import FundingModal from '../Funding/FundingModal';
+import { HarvestGrape } from '../PFP/HarvestGrape';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ export const ProfilePage: React.FC = () => {
 
     // 1) Ask backend for presigned upload URL
     const presignRes = await axios.post(
-      `${backendUrl}/api/images/presign`,
+      `${backendUrl}/api/v1/images/presign`,
       {
         type: kind,
         userId: user?.id,
@@ -83,7 +84,7 @@ export const ProfilePage: React.FC = () => {
     }
 
     // 3) Always use server redirect endpoint for stable reads (avoid exposing presigned GETs)
-    const viewUrl = `${backendUrl}/api/images/view/${key}`;
+    const viewUrl = `${backendUrl}/api/v1/images/view/${key}`;
     return { viewUrl, key, metadata };
   };
 
@@ -122,6 +123,49 @@ export const ProfilePage: React.FC = () => {
       e.target.value = '';
     }
   };
+
+  // Load avatarUrl from backend if not in localStorage
+  useEffect(() => {
+    const loadAvatarFromBackend = async () => {
+      // Only fetch from backend if we don't have it in localStorage
+      const storedAvatar = localStorage.getItem('cto_user_avatar_url') || 
+                          localStorage.getItem('profile_avatar_url');
+      if (storedAvatar) {
+        return; // Already have it, no need to fetch
+      }
+
+      if (!user?.id || !isAuthenticated) {
+        return; // Can't fetch without user
+      }
+
+      try {
+        const token = localStorage.getItem('cto_auth_token');
+        if (!token) return;
+
+        const response = await axios.get(
+          `${backendUrl}/api/v1/auth/profile`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (response.data?.avatarUrl) {
+          setAvatarUrl(response.data.avatarUrl);
+          localStorage.setItem('cto_user_avatar_url', response.data.avatarUrl);
+          localStorage.setItem('profile_avatar_url', response.data.avatarUrl);
+        }
+      } catch (error) {
+        console.error('Failed to load avatar from backend:', error);
+      }
+    };
+
+    if (isAuthenticated && user?.id) {
+      loadAvatarFromBackend();
+    }
+  }, [isAuthenticated, user?.id, backendUrl]);
 
   // Persist to localStorage for temporary durability (until backend profile update exists)
   useEffect(() => {
@@ -309,6 +353,18 @@ export const ProfilePage: React.FC = () => {
                     aria-label="Upload avatar image"
                   />
                   {avatarUploading && <span className="text-xs text-gray-500">Uploading...</span>}
+                  <div className="relative inline-block" style={{ zIndex: 10 }}>
+                    <HarvestGrape />
+                  </div>
+                  <button
+                    onClick={() => {
+                      console.log('Test button clicked - HarvestGrape should work too');
+                      alert('If you see this, buttons work. Check HarvestGrape button.');
+                    }}
+                    className="ml-2 px-3 py-1 bg-blue-500 text-white rounded text-sm"
+                  >
+                    Test
+                  </button>
                 </div>
                 {avatarUrl && (
                   <div className="mt-3 flex items-center gap-3">

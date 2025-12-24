@@ -232,6 +232,10 @@ export const useAuth = () => {
       if (response.user.walletId) {
         localStorage.setItem('cto_wallet_id', response.user.walletId);
       }
+      if (response.user.avatarUrl) {
+        localStorage.setItem('cto_user_avatar_url', response.user.avatarUrl);
+        localStorage.setItem('profile_avatar_url', response.user.avatarUrl);
+      }
       localStorage.setItem('cto_auth_token', response.token);
 
       console.log('✅ User data stored in localStorage after login');
