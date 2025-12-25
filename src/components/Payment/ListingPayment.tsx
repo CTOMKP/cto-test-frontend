@@ -153,22 +153,22 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           // Extract error message from response
           let errorMsg = 'Payment creation failed. Please try again.';
           if (error?.response?.data) {
-            // Handle different response structures
+            // Handle different response structures (nesting under 'data' or 'message')
             const data = error.response.data;
-            errorMsg = data.message || data.error || (typeof data === 'string' ? data : errorMsg);
+            errorMsg = data.message || data.error || (data.data?.message) || (typeof data === 'string' ? data : errorMsg);
           } else if (error?.message) {
             errorMsg = error.message;
           }
           
           // Handle specific error cases
           if (errorMsg.includes('No Movement wallet found') || errorMsg.includes('Movement wallet')) {
-            toast.error('Movement wallet not found. Please sync your Privy wallet first by logging out and logging back in.');
+            toast.error('Movement wallet not found. Please refresh your profile page.');
           } else if (errorMsg.includes('Insufficient balance')) {
-            toast.error('Insufficient balance. Please fund your Movement wallet with test tokens.');
-          } else if (errorMsg.includes('ENOTFOUND') || errorMsg.includes('getaddrinfo') || errorMsg.includes('Network error')) {
-            toast.error('Network error connecting to Movement network. Please check your connection and try again.');
+            toast.error('Insufficient balance. Your wallet has 0 MOVE. Please fund it with test tokens.');
+          } else if (errorMsg.includes('Network error') || errorMsg.includes('ENOTFOUND')) {
+            toast.error('Network error connecting to Movement. Please try again.');
           } else {
-            toast.error(errorMsg);
+            toast.error(`Error: ${errorMsg}`);
           }
           return;
         }
@@ -227,7 +227,8 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
       }
     } catch (error: any) {
       console.error('Payment failed:', error);
-      toast.error(error.response?.data?.message || 'Payment failed');
+      const errorMsg = error?.response?.data?.message || error?.message || 'Payment failed';
+      toast.error(`Payment failed: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
