@@ -14,25 +14,32 @@ export const PrivyLoginPage: React.FC = () => {
   const { createWallet } = useCreateWallet();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
+  const [hasStartedSync, setHasStartedSync] = useState(false);
 
   // Sync with backend after Privy authentication and Movement wallet creation
   useEffect(() => {
-    if (authenticated && user && !isSyncing && !isCreatingMovementWallet) {
+    if (authenticated && user && !isSyncing && !isCreatingMovementWallet && !hasStartedSync) {
+      setHasStartedSync(true);
       handleMovementWalletAndSync();
     }
-  }, [authenticated, user]);
+  }, [authenticated, user, isSyncing, isCreatingMovementWallet, hasStartedSync]);
 
   // Wait for Privy to fully load linkedAccounts (with retries)
-  const waitForPrivyAccounts = async (maxRetries = 5, delayMs = 500): Promise<boolean> => {
+  const waitForPrivyAccounts = async (maxRetries = 10, delayMs = 1000): Promise<boolean> => {
+    console.log('⏳ Waiting for Privy accounts to settle...');
     for (let i = 0; i < maxRetries; i++) {
       // Check if linkedAccounts is loaded and has items
       if (user?.linkedAccounts && user.linkedAccounts.length > 0) {
-        console.log(`✅ Privy accounts loaded after ${i + 1} attempt(s)`);
-        return true;
+        // Also check if we have any wallet (at least Ethereum is usually there)
+        const hasAnyWallet = user.linkedAccounts.some(acc => acc.type === 'wallet');
+        if (hasAnyWallet) {
+          console.log(`✅ Privy wallets loaded after ${i + 1} attempt(s)`);
+          return true;
+        }
       }
       
       if (i < maxRetries - 1) {
-        console.log(`⏳ Waiting for Privy accounts to load... (attempt ${i + 1}/${maxRetries})`);
+        console.log(`⏳ Waiting for Privy wallets to load... (attempt ${i + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
@@ -41,13 +48,33 @@ export const PrivyLoginPage: React.FC = () => {
     return false;
   };
 
+  // Wait specifically for Movement wallet to appear in user object
+  const waitForMovementWallet = async (maxRetries = 10, delayMs = 1000): Promise<boolean> => {
+    console.log('⏳ Waiting for Movement wallet to appear in Privy user object...');
+    for (let i = 0; i < maxRetries; i++) {
+      const wallet = getMovementWallet(user);
+      if (wallet) {
+        console.log(`✅ Movement wallet appeared after ${i + 1} attempt(s):`, wallet.address);
+        return true;
+      }
+      
+      if (i < maxRetries - 1) {
+        console.log(`⏳ Still waiting for Movement wallet... (attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+    return false;
+  };
+
   // Handle Movement wallet creation and backend sync
   const handleMovementWalletAndSync = async () => {
     try {
+      setSyncProgress('Loading Privy data...');
       // Step 1: Wait for Privy to fully load linkedAccounts
       await waitForPrivyAccounts();
       
       // Step 2: First sync with backend to check if user already exists and has wallets
+      setSyncProgress('Checking existing account...');
       console.log('🔄 Step 1: Syncing with backend to check existing wallets...');
       let backendSyncResult;
       try {
@@ -60,11 +87,11 @@ export const PrivyLoginPage: React.FC = () => {
 
       // Step 3: Check if user has Movement wallet in backend
       const backendHasMovementWallet = backendSyncResult?.wallets?.some(
-        (w: any) => w.chainType === 'movement' || w.blockchain === 'MOVEMENT'
+        (w: any) => w.blockchain === 'MOVEMENT'
       );
 
       // Step 4: Check if user has Movement wallet in Privy
-      const movementWallet = getMovementWallet(user);
+      let movementWallet = getMovementWallet(user);
       const privyHasMovementWallet = !!movementWallet;
 
       console.log('📊 Wallet Status Check:');
@@ -74,30 +101,26 @@ export const PrivyLoginPage: React.FC = () => {
       // Step 5: Only create wallet if BOTH backend and Privy don't have it
       if (!backendHasMovementWallet && !privyHasMovementWallet) {
         setIsCreatingMovementWallet(true);
+        setSyncProgress('Creating Movement wallet...');
         console.log('🔄 Creating Movement wallet (new user)...');
         
         try {
           // Create Movement wallet using Privy with shorter timeout
           const walletCreationPromise = createMovementWallet(user, createWallet);
           const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Wallet creation timeout')), 10000)
+            setTimeout(() => reject(new Error('Wallet creation timeout')), 20000)
           );
           
           const newWallet = await Promise.race([walletCreationPromise, timeoutPromise]);
           console.log('✅ Movement wallet created:', newWallet);
           
-          // Give Privy a moment to finish internal setup
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // CRITICAL: Wait for the new wallet to appear in the local user object
+          // before we attempt to sync with backend. If we sync too early,
+          // the backend might not see the new wallet from Privy API yet.
+          setSyncProgress('Verifying wallet...');
+          await waitForMovementWallet();
           
-          // Double-check wallet exists
-          const verifyWallet = getMovementWallet(user);
-          if (verifyWallet) {
-            console.log('✅ Wallet verified:', verifyWallet.address);
-            toast.success('Movement wallet created successfully!');
-          } else {
-            console.warn('⚠️ Wallet created but not immediately available, proceeding anyway...');
-            toast.success('Wallet creation initiated!');
-          }
+          toast.success('Movement wallet ready!');
         } catch (error: any) {
           console.error('❌ Wallet creation error:', error);
           
@@ -107,14 +130,15 @@ export const PrivyLoginPage: React.FC = () => {
             console.log('✅ Wallet exists despite error, proceeding...');
             toast.success('Wallet ready!');
           } else {
-            console.warn('⚠️ Wallet creation may have timed out, but continuing...');
-            toast('Wallet creation in progress, continuing...', { icon: '⏳', duration: 3000 });
+            console.warn('⚠️ Wallet creation error, but continuing to sync...');
+            toast('Continuing setup...', { icon: '⏳', duration: 3000 });
           }
         } finally {
           setIsCreatingMovementWallet(false);
         }
 
         // Re-sync with backend after wallet creation to update backend
+        setSyncProgress('Syncing with servers...');
         console.log('🔄 Re-syncing with backend after wallet creation...');
         try {
           await syncWithBackend();
@@ -127,10 +151,8 @@ export const PrivyLoginPage: React.FC = () => {
         }
       } else {
         // User already has wallet - just sync and navigate
+        setSyncProgress('Synchronizing account...');
         console.log('✅ User already has Movement wallet, skipping creation');
-        if (movementWallet) {
-          console.log(`  - Privy wallet: ${movementWallet.address}`);
-        }
         
         // Final sync to ensure backend is up to date (skip if we already synced)
         if (!backendSyncResult) {
@@ -145,6 +167,7 @@ export const PrivyLoginPage: React.FC = () => {
           }
         } else {
           // Already synced, just navigate
+          setSyncProgress('Redirecting...');
           setTimeout(() => {
             navigate(ROUTES.profile);
           }, 100);
@@ -153,6 +176,7 @@ export const PrivyLoginPage: React.FC = () => {
     } catch (error) {
       console.error('❌ Error in Movement wallet setup:', error);
       setIsCreatingMovementWallet(false);
+      setIsSyncing(false);
       // Try to navigate anyway
       setTimeout(() => {
         navigate(ROUTES.profile);
@@ -364,16 +388,30 @@ export const PrivyLoginPage: React.FC = () => {
     );
   }
 
+  const [syncProgress, setSyncProgress] = useState('');
+
+  // ... (inside the component)
+
   if (isSyncing || isCreatingMovementWallet) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
+        <div className="text-center p-8 max-w-md w-full bg-white rounded-2xl shadow-xl">
+          <div className="animate-spin rounded-full h-24 w-24 border-b-2 border-purple-600 mx-auto mb-6"></div>
           <p className="text-2xl font-bold text-gray-900 mb-2">
-            {isCreatingMovementWallet ? 'Creating Movement wallet...' : 'Syncing your account...'}
+            {isCreatingMovementWallet ? 'Creating Wallet...' : 'Syncing Profile...'}
           </p>
-          <p className="text-gray-600">
-            {isCreatingMovementWallet ? 'Setting up your Movement Network wallet' : 'Setting up your wallets and profile'}
+          <p className="text-gray-600 mb-4">
+            {isCreatingMovementWallet 
+              ? 'Setting up your Movement Network wallet. Please do not close this window.' 
+              : 'Syncing your wallets and profile with our servers.'}
+          </p>
+          {syncProgress && (
+            <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium animate-pulse">
+              {syncProgress}
+            </div>
+          )}
+          <p className="mt-6 text-xs text-gray-400">
+            This usually takes 10-15 seconds for new users.
           </p>
         </div>
       </div>
