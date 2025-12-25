@@ -15,6 +15,7 @@ export const PrivyLoginPage: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
   const [hasStartedSync, setHasStartedSync] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
 
   // Sync with backend after Privy authentication and Movement wallet creation
   useEffect(() => {
@@ -387,10 +388,6 @@ export const PrivyLoginPage: React.FC = () => {
       </div>
     );
   }
-
-  const [syncProgress, setSyncProgress] = useState('');
-
-  // ... (inside the component)
 
   if (isSyncing || isCreatingMovementWallet) {
     return (
