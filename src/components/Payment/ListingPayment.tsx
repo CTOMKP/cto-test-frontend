@@ -187,22 +187,14 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           // Extract error message from response
           let errorMsg = 'Payment creation failed. Please try again.';
           if (error?.response?.data) {
-            // Handle different response structures (nesting under 'data' or 'message')
             const data = error.response.data;
             errorMsg = data.message || data.error || (data.data?.message) || (typeof data === 'string' ? data : errorMsg);
           } else if (error?.message) {
             errorMsg = error.message;
           }
           
-          // Handle specific error cases
-          if (errorMsg.includes('No Movement wallet found') || errorMsg.includes('Movement wallet')) {
-            toast.error('Movement wallet not found. Please refresh your profile page.');
-          } else if (errorMsg.includes('Insufficient balance')) {
-            toast.error('Insufficient balance. Your wallet has 0 MOVE. Please fund it with test tokens.');
-          } else {
-            // Show the actual error message from the backend instead of hiding it
-            toast.error(errorMsg);
-          }
+          // Show the RAW error message from the backend so we can see User ID/Wallet counts
+          toast.error(errorMsg, { duration: 6000 });
           return;
         }
       }
