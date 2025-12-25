@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { paymentService } from '../../services/paymentService';
+import { authService } from '../../services/authService';
 import { privyPaymentService } from '../../services/privyPaymentService';
 import { movementPaymentService } from '../../services/movementPaymentService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
@@ -72,9 +73,35 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
         }
         
         // Check if user has Movement wallet
-        const movementWallet = getMovementWallet(user);
+        let movementWallet = getMovementWallet(user);
+        
+        // --- RESILIENCE: If frontend doesn't see it, check the backend/DB ---
         if (!movementWallet) {
-          toast.error('No Movement wallet found. Please refresh your profile page to sync your wallet.');
+          console.log('🔍 Wallet not in Privy object, checking backend DB...');
+          try {
+            const walletResult = await authService.getUserWallets();
+            const wallets = walletResult?.data?.wallets || walletResult?.wallets || [];
+            const dbWallet = wallets.find((w: any) => 
+              w.blockchain?.toUpperCase() === 'MOVEMENT' || 
+              w.blockchain?.toUpperCase() === 'APTOS'
+            );
+            
+            if (dbWallet) {
+              console.log('✅ Found wallet in DB:', dbWallet.address);
+              // Use the DB wallet details as a fallback
+              movementWallet = {
+                address: dbWallet.address,
+                publicKey: dbWallet.publicKey || dbWallet.address, // Fallback if pubkey missing
+                chainType: 'aptos'
+              };
+            }
+          } catch (e) {
+            console.warn('Backend wallet check failed', e);
+          }
+        }
+
+        if (!movementWallet) {
+          toast.error('No Movement wallet found. Please go to Profile and click "Sync Wallets".');
           setLoading(false);
           return;
         }
