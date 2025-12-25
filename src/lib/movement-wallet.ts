@@ -6,7 +6,31 @@
 import {
   useSignRawHash,
 } from "@privy-io/react-auth/extended-chains";
+import type { CurveSigningChainType } from "@privy-io/api-types";
 import { toHex } from "viem";
+
+// Types for Privy's signRawHash function (not exported from the module)
+interface SignRawHashInput {
+  address: string;
+  chainType: CurveSigningChainType;
+  hash: `0x${string}`;
+}
+
+interface SignRawHashOutput {
+  signature: `0x${string}`;
+}
+import {
+  Aptos,
+  AptosConfig,
+  Network,
+  AccountAddress,
+  AccountAuthenticatorEd25519,
+  Ed25519PublicKey,
+  Ed25519Signature,
+  generateSigningMessageForTransaction,
+  RawTransaction,
+  SimpleTransaction,
+} from "@aptos-labs/ts-sdk";
 
 /**
  * Create a Movement wallet using Privy
@@ -83,5 +107,101 @@ export function getMovementWallet(privyUser: any) {
   return privyUser.linkedAccounts.find(
     (account: any) => account.type === 'wallet' && account.chainType === 'aptos'
   );
+}
+
+/**
+ * Send Movement transaction using Privy signing
+ * @param transactionData - Transaction data from backend (Aptos format)
+ * @param walletAddress - Movement wallet address from Privy
+ * @param publicKey - Public key from Privy wallet
+ * @param signRawHash - Privy's signRawHash function
+ * @returns Transaction hash
+ */
+export async function sendMovementTransaction(
+  transactionData: {
+    type: string;
+    function: string;
+    type_arguments: string[];
+    arguments: string[];
+  },
+  walletAddress: string,
+  publicKey: string,
+  signRawHash: (input: SignRawHashInput) => Promise<SignRawHashOutput>
+): Promise<string> {
+  try {
+    // Initialize Movement client (uses Movement testnet)
+    const movementConfig = new AptosConfig({
+      network: Network.TESTNET,
+      fullnode: process.env.REACT_APP_MOVEMENT_NODE_URL || 'https://full.testnet.movementinfra.xyz/v1',
+    });
+    const movement = new Aptos(movementConfig);
+
+    // Convert address to AccountAddress
+    const senderAddress = AccountAddress.from(walletAddress);
+
+    // Build the transaction
+    // Convert arguments - amount should be a string (native units)
+    const functionArguments = transactionData.arguments.map((arg, index) => {
+      // First argument is recipient address (string), second is amount (string/number)
+      if (index === 1 && typeof arg === 'string' && /^\d+$/.test(arg)) {
+        // Amount in native units - keep as string for BigInt compatibility
+        return arg;
+      }
+      return arg;
+    });
+
+    // Validate function format (should be "module::module::function")
+    if (!transactionData.function.includes('::') || transactionData.function.split('::').length !== 3) {
+      throw new Error(`Invalid function format: ${transactionData.function}. Expected format: "module::module::function"`);
+    }
+
+    // Type assertion: transactionData.function is validated to have the correct format
+    const functionName = transactionData.function as `${string}::${string}::${string}`;
+
+    const rawTxn = await movement.transaction.build.simple({
+      sender: senderAddress,
+      data: {
+        function: functionName,
+        typeArguments: transactionData.type_arguments,
+        functionArguments: functionArguments,
+      },
+    });
+
+    // Generate signing message
+    const message = generateSigningMessageForTransaction(rawTxn);
+
+    // Sign with Privy
+    // 'aptos' is the correct chainType for Movement Network (Aptos-compatible)
+    const { signature } = await signRawHash({
+      address: walletAddress,
+      chainType: 'aptos' as CurveSigningChainType,
+      hash: toHex(message) as `0x${string}`,
+    });
+
+    // Create authenticator
+    const publicKeyBytes = Buffer.from(publicKey.replace('0x', ''), 'hex');
+    const signatureBytes = Buffer.from(signature.replace('0x', ''), 'hex');
+
+    const senderAuthenticator = new AccountAuthenticatorEd25519(
+      new Ed25519PublicKey(publicKeyBytes),
+      new Ed25519Signature(signatureBytes)
+    );
+
+    // Submit transaction
+    const pendingTxn = await movement.transaction.submit.simple({
+      transaction: rawTxn,
+      senderAuthenticator,
+    });
+
+    // Wait for transaction
+    const executedTxn = await movement.waitForTransaction({
+      transactionHash: pendingTxn.hash,
+    });
+
+    return executedTxn.hash;
+  } catch (error: any) {
+    console.error('Error sending Movement transaction:', error);
+    throw new Error(error?.message || 'Failed to send Movement transaction');
+  }
 }
 

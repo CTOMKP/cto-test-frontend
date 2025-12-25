@@ -55,7 +55,7 @@ export const MarketDashboard: React.FC = () => {
     try {
       setLoading(true);
       const categoryParam = selectedCategory === 'all' ? '' : `&category=${selectedCategory}`;
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com'}/api/listing/listings?limit=100${categoryParam}`);
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com'}/api/v1/listing/listings?limit=100${categoryParam}`);
       
       if (!response.ok) {
         if (response.status === 404) {

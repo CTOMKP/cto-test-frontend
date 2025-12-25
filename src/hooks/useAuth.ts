@@ -103,11 +103,12 @@ export const useAuth = () => {
     }
   }, [authState.isAuthenticated, startTokenRefresh, resetInactivityTimer]);
 
-  // Check authentication status on mount
+  // Check authentication status on mount (only once)
   useEffect(() => {
     console.log('useAuth useEffect triggered, checking auth status...');
     checkAuthStatus();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty - only run once on mount
 
   const checkAuthStatus = useCallback(async () => {
     console.log('🔄 checkAuthStatus called');

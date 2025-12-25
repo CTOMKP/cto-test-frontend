@@ -243,7 +243,7 @@ class AuthService {
       }
 
       const response = await axios.post(
-        `${backendUrl}/api/auth/refresh`,
+        `${backendUrl}/api/v1/auth/refresh`,
         {},
         { headers: this.getHeaders() }
       );

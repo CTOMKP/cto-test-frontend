@@ -6,6 +6,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { createMovementWallet, getMovementWallet } from '../../lib/movement-wallet';
+import { getCloudFrontUrl } from '../../utils/image-url-helper';
 
 export const PrivyLoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -210,7 +211,7 @@ export const PrivyLoginPage: React.FC = () => {
           console.log(`🔄 Attempt ${retryCount + 1}: Using token: ${freshToken.substring(0, 20)}...`);
           
           response = await axios.post(
-            `${backendUrl}/api/auth/privy/sync`,
+            `${backendUrl}/api/v1/auth/privy/sync`,
             { privyToken: freshToken },
             { 
               headers: { 'Content-Type': 'application/json' },
@@ -239,36 +240,61 @@ export const PrivyLoginPage: React.FC = () => {
 
       console.log('✅ Backend sync successful:', response.data);
 
-      // Store our JWT token and user info
-      localStorage.setItem('cto_auth_token', response.data.token);
-      localStorage.setItem('cto_user_email', response.data.user.email);
-      localStorage.setItem('cto_user_id', response.data.user.id.toString());
+      // Unwrap response from TransformInterceptor: { data: {...}, statusCode, timestamp }
+      const responseData = response.data.data || response.data;
       
-      if (response.data.user.walletAddress) {
-        localStorage.setItem('cto_wallet_address', response.data.user.walletAddress);
+      if (!responseData || !responseData.user) {
+        throw new Error('Invalid response structure from backend');
+      }
+
+      const userData = responseData.user;
+      const token = responseData.token;
+      const wallets = responseData.wallets || [];
+
+      // Store our JWT token and user info
+      if (token) {
+        localStorage.setItem('cto_auth_token', token);
       }
       
-      // Store avatarUrl if available (from database)
-      if (response.data.user.avatarUrl) {
-        console.log('✅ Storing avatarUrl from backend sync:', response.data.user.avatarUrl);
-        localStorage.setItem('cto_user_avatar_url', response.data.user.avatarUrl);
-        localStorage.setItem('profile_avatar_url', response.data.user.avatarUrl);
+      // Handle email - may be undefined for Google sign-in users
+      const userEmail = userData.email || userData.walletAddress || 'User';
+      if (userData.email) {
+        localStorage.setItem('cto_user_email', userData.email);
+      } else if (userData.walletAddress) {
+        // Fallback: use wallet address if no email
+        localStorage.setItem('cto_user_email', `${userData.walletAddress}@wallet.privy`);
+      }
+      
+      if (userData.id) {
+        localStorage.setItem('cto_user_id', userData.id.toString());
+      }
+      
+      if (userData.walletAddress) {
+        localStorage.setItem('cto_wallet_address', userData.walletAddress);
+      }
+      
+      // Store avatarUrl if available (from database) - transform to CloudFront URL
+      if (userData.avatarUrl) {
+        const cloudfrontUrl = getCloudFrontUrl(userData.avatarUrl);
+        console.log('✅ Storing avatarUrl from backend sync (CloudFront):', cloudfrontUrl);
+        localStorage.setItem('cto_user_avatar_url', cloudfrontUrl);
+        localStorage.setItem('profile_avatar_url', cloudfrontUrl);
       } else {
         console.log('⚠️ No avatarUrl in sync response');
       }
 
       // Store ALL wallets (including Aptos) for profile display
-      if (response.data.wallets && response.data.wallets.length > 0) {
-        localStorage.setItem('cto_user_wallets', JSON.stringify(response.data.wallets));
-        console.log('💼 Saved wallets to localStorage:', response.data.wallets);
+      if (wallets && wallets.length > 0) {
+        localStorage.setItem('cto_user_wallets', JSON.stringify(wallets));
+        console.log('💼 Saved wallets to localStorage:', wallets);
       }
 
-      toast.success(`✅ Welcome, ${response.data.user.email}!`);
+      toast.success(`✅ Welcome, ${userEmail}!`);
       
       // Return sync result for wallet checking logic
       if (skipNavigation) {
         setIsSyncing(false);
-        return response.data;
+        return responseData;
       }
       
       // Force close Privy modal and navigate immediately

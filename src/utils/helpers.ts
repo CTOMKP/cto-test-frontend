@@ -68,7 +68,7 @@ export const normalizeImageUrl = (input?: string | null): string | undefined => 
     if (!raw) return undefined;
 
     // Already backend redirect
-    if (raw.includes('/api/images/view/')) return raw;
+    if (raw.includes('/api/v1/images/view/') || raw.includes('/api/images/view/')) return raw;
 
     // Case 1: Full URL
     try {
@@ -79,7 +79,7 @@ export const normalizeImageUrl = (input?: string | null): string | undefined => 
       if (pos >= 0) {
         let key = path.substring(pos);
         key = key.replace(/^user-uploads[,/]/i, 'user-uploads/').replace(/,/g, '/');
-        return `${BACKEND_URL}/api/images/view/${key}`;
+        return `${BACKEND_URL}/api/v1/images/view/${key}`;
       }
       // If it's an external logo (dexscreener, coingecko, etc.), leave as-is
       return raw;
@@ -90,12 +90,12 @@ export const normalizeImageUrl = (input?: string | null): string | undefined => 
     // Case 2: Raw key starting with user-uploads using commas or slashes
     if (/^user-uploads[\/,]/i.test(raw)) {
       const key = raw.replace(/^user-uploads[,\/]/i, 'user-uploads/').replace(/,/g, '/');
-      return `${BACKEND_URL}/api/images/view/${key}`;
+      return `${BACKEND_URL}/api/v1/images/view/${key}`;
     }
 
     // Case 3: Plain filename or path — use as-is as the object key
     if (/^[^?#]+\.(?:png|jpg|jpeg|webp|gif|jfif|bmp|svg)$/i.test(raw)) {
-      return `${BACKEND_URL}/api/images/view/${raw.replace(/^\//, '')}`;
+      return `${BACKEND_URL}/api/v1/images/view/${raw.replace(/^\//, '')}`;
     }
 
     return raw;
@@ -122,21 +122,21 @@ export const buildImageCandidates = (input?: string | null): string[] => {
       const pos = path.indexOf('user-uploads');
       if (pos >= 0) {
         const key = path.substring(pos).replace(/^user-uploads[,/]/i, 'user-uploads/').replace(/,/g, '/');
-        add(`${BACKEND_URL}/api/images/view/${key}`);
+        add(`${BACKEND_URL}/api/v1/images/view/${key}`);
       }
       const base = path.split(/[\/]/).filter(Boolean).pop();
-      if (base) add(`${BACKEND_URL}/api/images/view/${base}`);
+      if (base) add(`${BACKEND_URL}/api/v1/images/view/${base}`);
     } catch {
       // not a URL; treat as raw key or filename
       // If looks like user-uploads with commas, also try slash form
       if (/^user-uploads[,\/]/i.test(raw)) {
         const slashKey = raw.replace(/^user-uploads[,\/]/i, 'user-uploads/').replace(/,/g, '/');
-        add(`${BACKEND_URL}/api/images/view/${slashKey}`);
+        add(`${BACKEND_URL}/api/v1/images/view/${slashKey}`);
       }
       // Basename fallback
       const base = raw.split(/[\/ ,]/).filter(Boolean).pop();
       if (base && /\.(png|jpg|jpeg|webp|gif|jfif|bmp|svg)$/i.test(base)) {
-        add(`${BACKEND_URL}/api/images/view/${base}`);
+        add(`${BACKEND_URL}/api/v1/images/view/${base}`);
       }
     }
   } catch {}

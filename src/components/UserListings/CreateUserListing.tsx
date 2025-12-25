@@ -78,8 +78,8 @@ export const CreateUserListing: React.FC = () => {
         telegram: links.telegram || undefined,
         discord: links.discord || undefined,
       },
-      vettingTier: scanResult.vettingTier,
-      vettingScore: scanResult.vettingScore,
+      vettingTier: scanResult.vettingTier || scanResult.tier || 'UNQUALIFIED',
+      vettingScore: scanResult.vettingScore ?? scanResult.risk_score ?? 0,
     };
     const res = await userListingsService.create(payload);
     if (res?.success && res?.data?.id) {
@@ -125,7 +125,7 @@ export const CreateUserListing: React.FC = () => {
 
     // 1) Ask backend for presigned upload URL
     const presignRes = await axios.post(
-      `${backendUrl}/api/images/presign`,
+      `${backendUrl}/api/v1/images/presign`,
       {
         type: kind,
         userId: opts?.userId,
@@ -151,7 +151,7 @@ export const CreateUserListing: React.FC = () => {
     }
 
     // 3) Always use backend redirect endpoint for stable reads (avoids expiring S3 URLs)
-    const viewUrl = `${backendUrl}/api/images/view/${key}`;
+    const viewUrl = `${backendUrl}/api/v1/images/view/${key}`;
     return { viewUrl, key, metadata };
   };
 
@@ -245,6 +245,10 @@ export const CreateUserListing: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      // Ensure we have valid vetting data with explicit types
+      const vettingTierValue: string = (scanResult as any).vettingTier || scanResult.tier || 'UNQUALIFIED';
+      const vettingScoreValue: number = (scanResult as any).vettingScore ?? scanResult.risk_score ?? 0;
+      
       const payload: CreateUserListingPayload = {
         contractAddr: contractAddr.trim(),
         chain,
@@ -259,8 +263,8 @@ export const CreateUserListing: React.FC = () => {
           telegram: links.telegram || undefined,
           discord: links.discord || undefined,
         },
-        vettingTier: scanResult.vettingTier,
-        vettingScore: scanResult.vettingScore,
+        vettingTier: vettingTierValue,
+        vettingScore: vettingScoreValue,
       };
       const res = await userListingsService.create(payload);
       if (res?.success && res?.data?.id) {
@@ -287,6 +291,10 @@ export const CreateUserListing: React.FC = () => {
         if (!scanResult?.success || !scanResult.eligible) {
           throw new Error('Please pass vetting before publishing');
         }
+        // Ensure we have valid vetting data
+        const vettingTierValue: string = scanResult.vettingTier || scanResult.tier || 'UNQUALIFIED';
+        const vettingScoreValue: number = scanResult.vettingScore ?? scanResult.risk_score ?? 0;
+        
         const payload: CreateUserListingPayload = {
           contractAddr: contractAddr.trim(),
           chain,
@@ -301,8 +309,8 @@ export const CreateUserListing: React.FC = () => {
             telegram: links.telegram || undefined,
             discord: links.discord || undefined,
           },
-          vettingTier: scanResult.vettingTier,
-          vettingScore: scanResult.vettingScore,
+          vettingTier: vettingTierValue,
+          vettingScore: vettingScoreValue,
         };
         const createRes = await userListingsService.create(payload);
         if (!createRes?.success || !createRes?.data?.id) {

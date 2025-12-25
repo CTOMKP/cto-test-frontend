@@ -166,6 +166,12 @@ const CreateUserListingNew: React.FC = () => {
                 setSelectedNetwork={setSelectedNetwork}
                 networks={networks}
                 onScanComplete={handleScanComplete}
+                onContinue={() => {
+                  // Only proceed to step 2 if scan was successful (score >= 50)
+                  if (scanResults && scanResults.risk_score >= 50) {
+                    setCurrentStep(2);
+                  }
+                }}
               />
             )}
 

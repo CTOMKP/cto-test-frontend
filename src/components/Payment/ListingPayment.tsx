@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
+import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { paymentService } from '../../services/paymentService';
 import { privyPaymentService } from '../../services/privyPaymentService';
+import { movementPaymentService } from '../../services/movementPaymentService';
+import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
 import toast from 'react-hot-toast';
 
 interface ListingPaymentProps {
@@ -20,11 +23,13 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 }) => {
   const navigate = useNavigate();
   const { authenticated, user, sendTransaction } = usePrivy();
+  const { signRawHash } = useSignRawHash();
   const [loading, setLoading] = useState(false);
   const [pricing, setPricing] = useState<number>(50);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [selectedChain, setSelectedChain] = useState<string>('base');
+  const [paymentMethod, setPaymentMethod] = useState<'movement' | 'evm' | 'circle'>('movement');
 
   const userId = localStorage.getItem('cto_user_email') || '';
   const userIdNum = parseInt(localStorage.getItem('cto_user_id') || '0');
@@ -37,9 +42,13 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   const loadPricing = async () => {
     try {
       const data = await paymentService.getPricing();
-      setPricing(data.pricing.listing);
+      // Safe access to pricing data
+      if (data?.pricing?.listing !== undefined) {
+        setPricing(data.pricing.listing);
+      }
     } catch (error) {
       console.error('Failed to load pricing:', error);
+      // Keep default pricing (50) if fetch fails
     }
   };
 
@@ -51,9 +60,122 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
     setLoading(true);
     try {
-      if (isPrivyUser && userIdNum > 0) {
-        // Privy payment flow
-        console.log('💳 Using Privy payment flow');
+      // Movement payment flow (preferred for user listings)
+      if (paymentMethod === 'movement' && isPrivyUser) {
+        console.log('💳 Using Movement payment flow');
+        
+        // Check if user has Movement wallet
+        const movementWallet = getMovementWallet(user);
+        if (!movementWallet) {
+          toast.error('No Movement wallet found. Please ensure your Privy wallet is connected to Movement network.');
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const result = await movementPaymentService.createListingPayment(listingId);
+          
+          // Handle wrapped response
+          const paymentData = result?.data || result;
+
+          if (!paymentData?.success) {
+            throw new Error(paymentData?.message || 'Failed to create payment');
+          }
+
+          console.log('✅ Movement payment data received:', paymentData);
+          toast.success('Signing transaction with Privy Movement wallet...');
+          setPaymentId(paymentData.paymentId);
+
+          // Send Movement transaction using Aptos SDK and Privy signing
+          // Movement uses Aptos-compatible transaction format
+          const transactionData = paymentData.transactionData;
+          
+          try {
+            // Get wallet public key
+            const publicKey = movementWallet.publicKey || movementWallet.public_key;
+            if (!publicKey) {
+              throw new Error('Public key not found in Movement wallet');
+            }
+
+            // Send Movement transaction using helper function
+            const txHash = await sendMovementTransaction(
+              transactionData,
+              movementWallet.address,
+              publicKey,
+              signRawHash
+            );
+
+            console.log('✅ Movement transaction sent:', txHash);
+            toast.success('Transaction submitted! Verifying payment...');
+
+            // Verify payment
+            setTimeout(async () => {
+              try {
+                const verifyResult = await movementPaymentService.verifyPayment(
+                  paymentData.paymentId,
+                  txHash
+                );
+
+                // Handle wrapped response
+                const verifyData = verifyResult?.data || verifyResult;
+
+                if (verifyData?.success && verifyData?.payment?.status === 'COMPLETED') {
+                  toast.success('Payment confirmed! Listing is now published!');
+                  setLoading(false);
+                  if (onPaymentComplete) onPaymentComplete();
+                  setTimeout(() => {
+                    navigate('/user-listings/mine');
+                  }, 2000);
+                } else {
+                  toast.error('Payment verification failed. Please try again.');
+                  setLoading(false);
+                }
+              } catch (verifyError: any) {
+                console.error('Payment verification failed:', verifyError);
+                toast.error(verifyError?.message || 'Failed to verify payment');
+                setLoading(false);
+              }
+            }, 5000);
+          } catch (txError: any) {
+            console.error('Movement transaction failed:', txError);
+            toast.error(txError?.message || 'Transaction cancelled or failed');
+            setPaymentId(null);
+            setLoading(false);
+            return;
+          }
+        } catch (error: any) {
+          console.error('Movement payment creation failed:', error);
+          
+          // Always clear loading state
+          setLoading(false);
+          setPaymentId(null);
+          
+          // Extract error message from response
+          let errorMsg = 'Payment creation failed. Please try again.';
+          if (error?.response?.data) {
+            // Handle different response structures
+            const data = error.response.data;
+            errorMsg = data.message || data.error || (typeof data === 'string' ? data : errorMsg);
+          } else if (error?.message) {
+            errorMsg = error.message;
+          }
+          
+          // Handle specific error cases
+          if (errorMsg.includes('No Movement wallet found') || errorMsg.includes('Movement wallet')) {
+            toast.error('Movement wallet not found. Please sync your Privy wallet first by logging out and logging back in.');
+          } else if (errorMsg.includes('Insufficient balance')) {
+            toast.error('Insufficient balance. Please fund your Movement wallet with test tokens.');
+          } else if (errorMsg.includes('ENOTFOUND') || errorMsg.includes('getaddrinfo') || errorMsg.includes('Network error')) {
+            toast.error('Network error connecting to Movement network. Please check your connection and try again.');
+          } else {
+            toast.error(errorMsg);
+          }
+          return;
+        }
+      }
+      // EVM Privy payment flow (for other chains)
+      else if (paymentMethod === 'evm' && isPrivyUser && userIdNum > 0) {
+        console.log('💳 Using Privy EVM payment flow');
         
         const result = await privyPaymentService.payForListing({
           userId: userIdNum,
@@ -84,8 +206,9 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
             return;
           }
         }
-      } else {
-        // Circle payment flow (legacy)
+      } 
+      // Circle payment flow (legacy)
+      else {
         console.log('💳 Using Circle payment flow');
         
         const result = await paymentService.payForListing({
@@ -155,7 +278,9 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-600">Listing Fee:</span>
-            <span className="text-2xl font-bold text-gray-800">${pricing} USDC</span>
+            <span className="text-2xl font-bold text-gray-800">
+              {paymentMethod === 'movement' ? '1 MOVE' : `$${pricing} USDC`}
+            </span>
           </div>
           <p className="text-xs text-gray-500 mt-2">
             This payment will publish your listing on the marketplace.
@@ -165,25 +290,51 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
         {!paymentId ? (
           <div className="space-y-3">
             {isPrivyUser && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Chain for Payment
-                </label>
-                <select
-                  value={selectedChain}
-                  onChange={(e) => setSelectedChain(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="base">Base (Recommended)</option>
-                  <option value="polygon">Polygon</option>
-                  <option value="ethereum">Ethereum</option>
-                  <option value="arbitrum">Arbitrum</option>
-                  <option value="optimism">Optimism</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Choose which chain to pay from. Base has lowest fees.
-                </p>
-              </div>
+              <>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as 'movement' | 'evm' | 'circle')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="movement">Movement (1 MOVE) - Recommended</option>
+                    <option value="evm">EVM Chains (USDC)</option>
+                    <option value="circle">Circle Wallet (USDC)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {paymentMethod === 'movement' 
+                      ? 'Pay with Movement test tokens using your Privy Movement wallet.'
+                      : paymentMethod === 'evm'
+                      ? 'Pay with USDC on EVM chains (Base, Polygon, etc.)'
+                      : 'Pay with USDC from your Circle wallet.'}
+                  </p>
+                </div>
+                
+                {paymentMethod === 'evm' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Chain for Payment
+                    </label>
+                    <select
+                      value={selectedChain}
+                      onChange={(e) => setSelectedChain(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    >
+                      <option value="base">Base (Recommended)</option>
+                      <option value="polygon">Polygon</option>
+                      <option value="ethereum">Ethereum</option>
+                      <option value="arbitrum">Arbitrum</option>
+                      <option value="optimism">Optimism</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Choose which chain to pay from. Base has lowest fees.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
             
             <button
@@ -197,7 +348,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                   Processing...
                 </div>
               ) : (
-                `Pay ${pricing} USDC`
+                paymentMethod === 'movement' ? 'Pay 1 MOVE' : `Pay $${pricing} USDC`
               )}
             </button>
 
@@ -243,12 +394,13 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         <div className="mt-6 pt-4 border-t border-gray-200">
           <p className="text-xs text-gray-500">
-            <strong>Note:</strong> Ensure you have at least {pricing} USDC in your wallet before proceeding.
-            {isPrivyUser ? (
-              <span> Payment will be made from your {selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} Privy wallet.</span>
-            ) : (
-              <span> The payment will be deducted from your Circle wallet.</span>
-            )}
+            <strong>Note:</strong> {
+              paymentMethod === 'movement' 
+                ? 'Ensure you have at least 1 MOVE in your Movement wallet. Payment will be made from your Privy Movement wallet.'
+                : paymentMethod === 'evm'
+                ? `Ensure you have at least ${pricing} USDC in your ${selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} wallet. Payment will be made from your Privy ${selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} wallet.`
+                : `Ensure you have at least ${pricing} USDC in your wallet. The payment will be deducted from your Circle wallet.`
+            }
           </p>
         </div>
       </div>

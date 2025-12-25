@@ -8,7 +8,7 @@ export const privyPaymentService = {
    */
   async payForListing(data: { userId: number; listingId: string; chain?: string }) {
     const response = await axios.post(
-      `${API_BASE}/api/payment/privy/listing`,
+      `${API_BASE}/api/v1/payment/privy/listing`,
       {
         userId: data.userId,
         listingId: data.listingId,
@@ -27,7 +27,7 @@ export const privyPaymentService = {
    */
   async verifyPayment(paymentId: string, txHash?: string) {
     const response = await axios.post(
-      `${API_BASE}/api/payment/privy/verify/${paymentId}`,
+      `${API_BASE}/api/v1/payment/privy/verify/${paymentId}`,
       { txHash },
       {
         headers: { 'Content-Type': 'application/json' },
@@ -41,7 +41,7 @@ export const privyPaymentService = {
    * Get pricing information
    */
   async getPricing() {
-    const response = await axios.get(`${API_BASE}/api/payment/pricing`);
+    const response = await axios.get(`${API_BASE}/api/v1/payment/pricing`);
     return response.data;
   },
 };

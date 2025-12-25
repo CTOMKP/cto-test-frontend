@@ -20,24 +20,24 @@ export const listingService = {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
     });
-    const res = await axios.get(`${backendUrl}/api/listing/listings?${qs.toString()}`);
+    const res = await axios.get(`${backendUrl}/api/v1/listing/listings?${qs.toString()}`);
     return res.data;
   },
   async getOne(contractAddress: string) {
     const backendUrl = getBackendUrl();
-    const res = await axios.get(`${backendUrl}/api/listing/${contractAddress}`);
+    const res = await axios.get(`${backendUrl}/api/v1/listing/${contractAddress}`);
     return res.data;
   },
   async scan(contractAddress: string, chain: string = 'SOLANA') {
     const backendUrl = getBackendUrl();
-    const res = await axios.post(`${backendUrl}/api/listing/scan`, { contractAddress, chain });
+    const res = await axios.post(`${backendUrl}/api/v1/listing/scan`, { contractAddress, chain });
     return res.data;
   },
   async refresh(contractAddress: string, chain: string = 'SOLANA') {
     const backendUrl = getBackendUrl();
     const token = localStorage.getItem('cto_jwt_token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    const res = await axios.post(`${backendUrl}/api/listing/refresh`, { contractAddress, chain }, { headers });
+    const res = await axios.post(`${backendUrl}/api/v1/listing/refresh`, { contractAddress, chain }, { headers });
     return res.data;
   },
 };

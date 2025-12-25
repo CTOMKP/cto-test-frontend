@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import userListingsService from '../../services/userListingsService';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl } from '../../utils/helpers';
+import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import { TokenAnalytics } from '../Listing/TokenAnalytics';
 
 interface UserListing {
@@ -66,8 +67,36 @@ export const UserListingDetail: React.FC = () => {
     if (id) load();
   }, [id]);
 
-  const logoSrc = useMemo(() => normalizeImageUrl((data as any)?.logoUrl) || (data as any)?.logoUrl || undefined, [data]);
-  const bannerSrc = useMemo(() => normalizeImageUrl((data as any)?.bannerUrl) || (data as any)?.bannerUrl || undefined, [data]);
+  // Convert backend API URLs to CloudFront URLs to avoid CORS issues
+  const logoSrc = useMemo(() => {
+    const logoUrl = (data as any)?.logoUrl;
+    if (!logoUrl) return undefined;
+    
+    // If it's a backend API URL, convert to CloudFront
+    if (typeof logoUrl === 'string' && logoUrl.includes('/api/v1/images/view/')) {
+      const pathMatch = logoUrl.match(/\/api\/v1\/images\/view\/(.+)$/);
+      if (pathMatch) {
+        return getCloudFrontUrl(pathMatch[1].split('?')[0]);
+      }
+    }
+    // Otherwise use normalized URL (might already be CloudFront or external)
+    return normalizeImageUrl(logoUrl) || logoUrl;
+  }, [data]);
+  
+  const bannerSrc = useMemo(() => {
+    const bannerUrl = (data as any)?.bannerUrl;
+    if (!bannerUrl) return undefined;
+    
+    // If it's a backend API URL, convert to CloudFront
+    if (typeof bannerUrl === 'string' && bannerUrl.includes('/api/v1/images/view/')) {
+      const pathMatch = bannerUrl.match(/\/api\/v1\/images\/view\/(.+)$/);
+      if (pathMatch) {
+        return getCloudFrontUrl(pathMatch[1].split('?')[0]);
+      }
+    }
+    // Otherwise use normalized URL (might already be CloudFront or external)
+    return normalizeImageUrl(bannerUrl) || bannerUrl;
+  }, [data]);
 
   if (loading) {
     return (

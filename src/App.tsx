@@ -5,7 +5,7 @@ import { PrivyProvider } from '@privy-io/react-auth';
 import { PrivyLoginPage } from './components/Auth/PrivyLoginPage';
 import { PrivyProfilePage } from './components/Profile/PrivyProfilePage';
 import { ListingsPage } from './components/Listing/ListingsPage';
-import { CreateUserListing } from './components/UserListings/CreateUserListing';
+import CreateUserListingNew from './components/UserListings/CreateUserListingNew';
 import { MyUserListings } from './components/UserListings/MyUserListings';
 import { UserListingDetail } from './components/UserListings/UserListingDetail';
 import { ListingDetail } from './components/Listing/ListingDetail';
@@ -138,7 +138,7 @@ const AppContent: React.FC = () => {
       <Route path={ROUTES.login} element={<PrivyLoginPage />} />
       <Route path={ROUTES.signup} element={<PrivyLoginPage />} />
       <Route path={ROUTES.profile} element={<ProtectedRoute><PrivyProfilePage /></ProtectedRoute>} />
-      <Route path={ROUTES.createUserListing} element={<ProtectedRoute><CreateUserListing /></ProtectedRoute>} />
+      <Route path={ROUTES.createUserListing} element={<ProtectedRoute><CreateUserListingNew /></ProtectedRoute>} />
       <Route path={ROUTES.myUserListings} element={<ProtectedRoute><MyUserListings /></ProtectedRoute>} />
       <Route path="/bridge" element={<ProtectedRoute><UserWormholeBridge /></ProtectedRoute>} />
       <Route path="/swap" element={<ProtectedRoute><TokenSwap /></ProtectedRoute>} />

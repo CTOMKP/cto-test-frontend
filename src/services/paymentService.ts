@@ -53,7 +53,7 @@ export interface AdBoostPaymentPayload {
 export const paymentService = {
   // Get pricing information
   async getPricing(): Promise<{ pricing: PaymentPricing; currency: string }> {
-    const res = await axios.get(`${backendUrl}/api/payment/pricing`, {
+    const res = await axios.get(`${backendUrl}/api/v1/payment/pricing`, {
       headers: authHeaders(),
     });
     return res.data;
@@ -62,7 +62,7 @@ export const paymentService = {
   // Pay for listing
   async payForListing(payload: ListingPaymentPayload) {
     const res = await axios.post(
-      `${backendUrl}/api/payment/listing`,
+      `${backendUrl}/api/v1/payment/listing`,
       payload,
       { headers: authHeaders() }
     );
@@ -72,7 +72,7 @@ export const paymentService = {
   // Pay for ad boost
   async payForAdBoost(payload: AdBoostPaymentPayload) {
     const res = await axios.post(
-      `${backendUrl}/api/payment/ad-boost`,
+      `${backendUrl}/api/v1/payment/ad-boost`,
       payload,
       { headers: authHeaders() }
     );
@@ -82,7 +82,7 @@ export const paymentService = {
   // Verify payment status
   async verifyPayment(paymentId: string, userId: string) {
     const res = await axios.get(
-      `${backendUrl}/api/payment/verify/${paymentId}?userId=${userId}`,
+      `${backendUrl}/api/v1/payment/verify/${paymentId}?userId=${userId}`,
       { headers: authHeaders() }
     );
     return res.data;
@@ -92,7 +92,7 @@ export const paymentService = {
   async getPaymentHistory(userId: string, paymentType?: string) {
     const queryParams = paymentType ? `?paymentType=${paymentType}` : '';
     const res = await axios.get(
-      `${backendUrl}/api/payment/history/${userId}${queryParams}`,
+      `${backendUrl}/api/v1/payment/history/${userId}${queryParams}`,
       { headers: authHeaders() }
     );
     return res.data;

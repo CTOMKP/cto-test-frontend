@@ -17,7 +17,7 @@ export interface DashboardStats {
 export const adminService = {
   // Get dashboard statistics
   async getDashboardStats(): Promise<{ stats: DashboardStats }> {
-    const res = await axios.get(`${backendUrl}/api/admin/dashboard/stats`, {
+    const res = await axios.get(`${backendUrl}/api/v1/admin/dashboard/stats`, {
       headers: authHeaders(),
     });
     return res.data;
@@ -25,7 +25,7 @@ export const adminService = {
 
   // Get pending listings
   async getPendingListings() {
-    const res = await axios.get(`${backendUrl}/api/admin/listings/pending`, {
+    const res = await axios.get(`${backendUrl}/api/v1/admin/listings/pending`, {
       headers: authHeaders(),
     });
     return res.data;
@@ -33,7 +33,7 @@ export const adminService = {
 
   // Get published listings
   async getPublishedListings() {
-    const res = await axios.get(`${backendUrl}/api/admin/listings/published`, {
+    const res = await axios.get(`${backendUrl}/api/v1/admin/listings/published`, {
       headers: authHeaders(),
     });
     return res.data;
@@ -42,7 +42,7 @@ export const adminService = {
   // Approve listing
   async approveListing(listingId: string, adminUserId: string, notes?: string) {
     const res = await axios.post(
-      `${backendUrl}/api/admin/listings/approve`,
+      `${backendUrl}/api/v1/admin/listings/approve`,
       { listingId, adminUserId, notes },
       { headers: authHeaders() }
     );
@@ -52,7 +52,7 @@ export const adminService = {
   // Reject listing
   async rejectListing(listingId: string, adminUserId: string, reason: string, notes?: string) {
     const res = await axios.post(
-      `${backendUrl}/api/admin/listings/reject`,
+      `${backendUrl}/api/v1/admin/listings/reject`,
       { listingId, adminUserId, reason, notes },
       { headers: authHeaders() }
     );
@@ -67,7 +67,7 @@ export const adminService = {
     
     const query = queryParams.toString();
     const res = await axios.get(
-      `${backendUrl}/api/admin/payments${query ? '?' + query : ''}`,
+      `${backendUrl}/api/v1/admin/payments${query ? '?' + query : ''}`,
       { headers: authHeaders() }
     );
     return res.data;
@@ -75,7 +75,7 @@ export const adminService = {
 
   // Get active ad boosts
   async getActiveAdBoosts() {
-    const res = await axios.get(`${backendUrl}/api/admin/ad-boosts/active`, {
+    const res = await axios.get(`${backendUrl}/api/v1/admin/ad-boosts/active`, {
       headers: authHeaders(),
     });
     return res.data;
@@ -84,7 +84,7 @@ export const adminService = {
   // Update user role
   async updateUserRole(userId: string, role: 'USER' | 'ADMIN' | 'MODERATOR', adminUserId: string) {
     const res = await axios.post(
-      `${backendUrl}/api/admin/users/update-role`,
+      `${backendUrl}/api/v1/admin/users/update-role`,
       { userId, role, adminUserId },
       { headers: authHeaders() }
     );

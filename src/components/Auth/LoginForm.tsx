@@ -153,7 +153,7 @@ export const LoginForm: React.FC = () => {
               const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
               // Exchange Google account for backend-issued JWT
               try {
-                const googleLoginRes = await axios.post(`${backendUrl}/api/auth/google-login`, {
+                const googleLoginRes = await axios.post(`${backendUrl}/api/v1/auth/google-login`, {
                   email: userInfo.email,
                   providerId: userInfo.id || userInfo.sub,
                 });

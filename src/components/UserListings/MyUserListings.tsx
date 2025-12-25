@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../utils/constants';
 import userListingsService from '../../services/userListingsService';
-import FallbackImage from '../FallbackImage';
-import { normalizeImageUrl } from '../../utils/helpers';
+// Note: Not using FallbackImage here because it calls buildImageCandidates 
+// which converts CloudFront URLs back to backend API URLs, causing CORS errors
+import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import { ListingPayment } from '../Payment/ListingPayment';
 import { paymentService } from '../../services/paymentService';
 import toast from 'react-hot-toast';
@@ -32,7 +33,12 @@ export const MyUserListings: React.FC = () => {
   const loadPricing = async () => {
     try {
       const data = await paymentService.getPricing();
-      setListingPrice(data.pricing.listing);
+      // Response type: { pricing: PaymentPricing; currency: string }
+      // PaymentPricing has: { listing: number; adBoosts: {...} }
+      if (data?.pricing?.listing !== undefined) {
+        setListingPrice(data.pricing.listing);
+      }
+      // Keep default price if fetch fails or structure is unexpected
     } catch (error) {
       console.error('Failed to load pricing:', error);
       // Keep default price if fetch fails
@@ -61,10 +67,11 @@ export const MyUserListings: React.FC = () => {
     load(); 
     loadPricing();
 
-    // Auto-refresh listings every 10 seconds (like gmgn.ai)
+    // Auto-refresh listings every 30 seconds (like gmgn.ai)
+    // Reduced frequency to avoid excessive API calls and page refreshes
     const interval = setInterval(() => {
       load();
-    }, 10000);
+    }, 30000);
 
     return () => clearInterval(interval); // Cleanup on unmount
   }, []);
@@ -86,8 +93,33 @@ export const MyUserListings: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {items.map((it) => {
-            const logo = normalizeImageUrl(it.logoUrl) || it.logoUrl || undefined;
-            const banner = normalizeImageUrl(it.bannerUrl) || it.bannerUrl || undefined;
+            // Convert backend API URLs to CloudFront URLs to avoid CORS issues
+            const convertImageUrl = (url: string | null | undefined): string | undefined => {
+              if (!url || typeof url !== 'string') return undefined;
+              
+              // If already CloudFront, return as-is
+              if (url.includes('cloudfront.net')) return url;
+              
+              // Extract path from backend API URL: https://api.ctomarketplace.com/api/v1/images/view/user-uploads/...
+              if (url.includes('/api/v1/images/view/')) {
+                const pathMatch = url.match(/\/api\/v1\/images\/view\/(.+)$/);
+                if (pathMatch) {
+                  const imagePath = pathMatch[1].split('?')[0]; // Remove query params
+                  return getCloudFrontUrl(imagePath);
+                }
+              }
+              
+              // If it's already a path like "user-uploads/...", convert directly
+              if (url.includes('user-uploads/')) {
+                return getCloudFrontUrl(url);
+              }
+              
+              // Otherwise return as-is (might be external URL)
+              return url;
+            };
+            
+            const logo = convertImageUrl(it.logoUrl);
+            const banner = convertImageUrl(it.bannerUrl);
             const thumb = logo || banner; // prefer logo for crisp thumbnail
             return (
               <div key={it.id} className="bg-white border rounded shadow-sm hover:shadow transition overflow-hidden">
@@ -95,13 +127,26 @@ export const MyUserListings: React.FC = () => {
                 {/* Simple thumbnail (no cover/avatar) */}
                 <div className="w-full h-40 bg-gray-50 flex items-center justify-center overflow-hidden">
                   {thumb ? (
-                    <FallbackImage
+                    <img
                       src={thumb}
                       alt={`${it.title} thumbnail`}
                       className="max-w-full max-h-full object-contain"
+                      onError={(e) => {
+                        // Fallback to placeholder if image fails to load
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        const placeholder = (e.target as HTMLImageElement).nextElementSibling;
+                        if (placeholder) {
+                          (placeholder as HTMLElement).style.display = 'flex';
+                        }
+                      }}
                     />
                   ) : (
                     <div className="text-xs text-gray-400">No image</div>
+                  )}
+                  {thumb && (
+                    <div className="text-xs text-gray-400" style={{ display: 'none' }}>
+                      Image failed to load
+                    </div>
                   )}
                 </div>
 
@@ -143,7 +188,7 @@ export const MyUserListings: React.FC = () => {
                       }}
                       className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all"
                     >
-                      💳 Pay ${listingPrice} to Publish
+                      💳 Pay 1 MOVE to Publish
                     </button>
                     <button
                       onClick={(e) => {

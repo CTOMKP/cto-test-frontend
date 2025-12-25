@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { useCircleWallet } from '../../hooks/useCircleWallet';
+import { motion } from 'framer-motion';
 import { pfpService } from '../../services/pfpService';
 import toast from 'react-hot-toast';
+import { getMascotImageUrl } from '../../utils/image-url-helper';
+
+interface CardRevealProps {
+  onClose?: () => void;
+}
 
 // Mascot traits matching actual images
 type TraitType = 
@@ -59,78 +63,95 @@ interface MascotCard {
   compositeImage: string; // Data URL of the layered image
 }
 
-interface CardRevealProps {
-  onClose: () => void;
-}
+// Generate composite image from layers
+const createCompositeImage = async (traitType: TraitType): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject('Canvas not supported');
+      return;
+    }
+
+    // Set canvas size
+    canvas.width = 800;
+    canvas.height = 800;
+
+    const images = {
+      stage: document.createElement('img'),
+      baseSkin: document.createElement('img'),
+      trait: document.createElement('img'),
+    };
+
+    let loadedCount = 0;
+    const totalImages = 3;
+
+    const onImageLoad = () => {
+      loadedCount++;
+      if (loadedCount === totalImages) {
+        // Draw layers in order: stage -> base skin -> trait
+        ctx.drawImage(images.stage, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(images.baseSkin, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(images.trait, 0, 0, canvas.width, canvas.height);
+        
+        resolve(canvas.toDataURL('image/png'));
+      }
+    };
+
+    const onImageError = (src: string) => {
+      console.error('Failed to load mascot image:', src);
+      reject(`Failed to load mascot image: ${src}`);
+    };
+
+    // Load all images - try CloudFront first, fallback to local public folder
+    // For test frontend, use local paths since CloudFront may not be configured
+    const stagePath = getMascotImageUrl('mascots/STAGE/STAGE.png') || '/mascots/STAGE/STAGE.png';
+    const baseSkinPath = getMascotImageUrl('mascots/SKIN/BASE SKIN.png') || '/mascots/SKIN/BASE SKIN.png';
+    const traitPath = getMascotImageUrl(`mascots/TRAITS/${traitType}.png`) || `/mascots/TRAITS/${traitType}.png`;
+
+    // Set crossOrigin for CORS when loading from CloudFront (cross-origin)
+    // This prevents "tainted canvas" errors when calling toDataURL()
+    const isCloudFrontUrl = stagePath.startsWith('http');
+    if (isCloudFrontUrl) {
+      images.stage.crossOrigin = 'anonymous';
+      images.baseSkin.crossOrigin = 'anonymous';
+      images.trait.crossOrigin = 'anonymous';
+    }
+
+    images.stage.onload = onImageLoad;
+    images.stage.onerror = () => onImageError(stagePath);
+    images.stage.src = stagePath;
+
+    images.baseSkin.onload = onImageLoad;
+    images.baseSkin.onerror = () => onImageError(baseSkinPath);
+    images.baseSkin.src = baseSkinPath;
+
+    images.trait.onload = onImageLoad;
+    images.trait.onerror = () => onImageError(traitPath);
+    images.trait.src = traitPath;
+  });
+};
+
 
 export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
-  const { user } = useAuth();
-  const { wallet } = useCircleWallet();
   const [isRevealing, setIsRevealing] = useState(false);
   const [isRevealed, setIsRevealed] = useState(false);
   const [mascotCard, setMascotCard] = useState<MascotCard | null>(null);
-
-  // Generate composite image from layers
-  const createCompositeImage = async (traitType: TraitType): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject('Canvas not supported');
-        return;
-      }
-
-      // Set canvas size
-      canvas.width = 800;
-      canvas.height = 800;
-
-      const images = {
-        stage: new Image(),
-        baseSkin: new Image(),
-        trait: new Image(),
-      };
-
-      let loadedCount = 0;
-      const totalImages = 3;
-
-      const onImageLoad = () => {
-        loadedCount++;
-        if (loadedCount === totalImages) {
-          // Draw layers in order: stage -> base skin -> trait
-          ctx.drawImage(images.stage, 0, 0, canvas.width, canvas.height);
-          ctx.drawImage(images.baseSkin, 0, 0, canvas.width, canvas.height);
-          ctx.drawImage(images.trait, 0, 0, canvas.width, canvas.height);
-          
-          resolve(canvas.toDataURL('image/png'));
-        }
-      };
-
-      const onImageError = () => {
-        console.error('Failed to load mascot image');
-        reject('Failed to load mascot images');
-      };
-
-      // Load all images
-      images.stage.onload = onImageLoad;
-      images.stage.onerror = onImageError;
-      images.stage.src = '/mascots/STAGE/STAGE.png';
-
-      images.baseSkin.onload = onImageLoad;
-      images.baseSkin.onerror = onImageError;
-      images.baseSkin.src = '/mascots/SKIN/BASE SKIN.png';
-
-      images.trait.onload = onImageLoad;
-      images.trait.onerror = onImageError;
-      images.trait.src = `/mascots/TRAITS/${traitType}.png`;
-    });
-  };
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAutoSaved, setIsAutoSaved] = useState(false);
 
   // Generate mascot based on wallet address + timestamp + random
   const generateMascot = async (): Promise<MascotCard> => {
-    const baseSeed = wallet?.address || user?.email || 'demo';
+    // Get wallet address from localStorage (works with both Privy and Circle wallets)
+    const walletAddress = 
+      (typeof window !== 'undefined' ? localStorage.getItem('cto_wallet_address') : null) ||
+      (typeof window !== 'undefined' ? localStorage.getItem('cto_user_email') : null) ||
+      (typeof window !== 'undefined' ? localStorage.getItem('cto_user_id') : null) ||
+      'demo';
+    
     const timestamp = Date.now();
     const random = Math.random() * 1000000;
-    const seed = `${baseSeed}_${timestamp}_${random}`;
+    const seed = `${walletAddress}_${timestamp}_${random}`;
     const seedHash = seed.split('').reduce((a, b) => {
       a = ((a << 5) - a) + b.charCodeAt(0);
       return a & a;
@@ -167,7 +188,10 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
     };
   };
 
+  // Handle reveal button click
   const handleReveal = async () => {
+    if (isRevealed || isRevealing) return;
+    
     setIsRevealing(true);
     try {
       const mascot = await generateMascot();
@@ -176,6 +200,7 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
       // Animation delay
       setTimeout(() => {
         setIsRevealed(true);
+        setIsRevealing(false);
         toast.success(`🎉 You got a ${mascot.rarity} ${mascot.name}!`);
       }, 2000);
     } catch (error) {
@@ -185,10 +210,18 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
     }
   };
 
+  // Get user ID from localStorage
+  const getUserId = (): string | null => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cto_user_id');
+    }
+    return null;
+  };
+
   // Auto-save PFP when mascot is revealed
   useEffect(() => {
     const handleSavePFP = async () => {
-      if (!mascotCard || !isRevealed) return;
+      if (!mascotCard || !isRevealed || isAutoSaved || isSaving) return;
 
       try {
         // Convert data URL to File
@@ -198,18 +231,22 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
         const file = new File([blob], `mascot-${mascotCard.id}.png`, { type: 'image/png' });
 
         // Get user ID from localStorage
-        const userId = localStorage.getItem('cto_user_id');
+        const userId = getUserId();
 
-        // Save PFP automatically
-        const result = await pfpService.savePFP(file, userId || undefined);
+        if (!userId) {
+          console.warn('User ID not found, skipping auto-save. Please ensure you are logged in.');
+          return;
+        }
+
+        // Save PFP automatically (silent - no toast)
+        const result = await pfpService.savePFP(file, userId);
         
         if (result.success) {
+          setIsAutoSaved(true);
           console.log('✅ PFP auto-saved successfully:', result.imageUrl);
-          toast.success('🎉 Profile picture saved automatically!');
         }
       } catch (error) {
         console.error('Failed to auto-save PFP:', error);
-        // Don't show error toast - just log it, as the user can still use the mascot
       }
     };
 
@@ -217,104 +254,108 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
     if (isRevealed && mascotCard) {
       handleSavePFP();
     }
-  }, [mascotCard, isRevealed]);
+  }, [mascotCard, isRevealed, isAutoSaved, isSaving]);
 
-  const handleShare = (platform: 'twitter' | 'facebook' | 'telegram') => {
+  const handleSavePFP = async () => {
     if (!mascotCard) return;
     
-    const shareText = `🎉 I just got my CTO Marketplace mascot: ${mascotCard.name} (${mascotCard.rarity})! Check out my unique profile picture!`;
-    const shareUrl = window.location.origin;
-    
-    const shareUrls = {
-      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`,
-      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(shareText)}`,
-      telegram: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`,
-    };
+    setIsSaving(true);
+    try {
+      // Convert data URL to File
+      const dataUrl = mascotCard.compositeImage;
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const file = new File([blob], `mascot-${mascotCard.id}.png`, { type: 'image/png' });
 
-    window.open(shareUrls[platform], '_blank', 'width=600,height=400');
-  };
+      // Get user ID from localStorage
+      const userId = getUserId();
+      if (!userId) {
+        throw new Error('User ID not found. Please ensure you are logged in and try again.');
+      }
 
-  const handleDownload = () => {
-    if (!mascotCard) return;
-    
-    const link = document.createElement('a');
-    link.download = `cto-mascot-${mascotCard.name.replace(/\s+/g, '-').toLowerCase()}.png`;
-    link.href = mascotCard.compositeImage;
-    link.click();
-    
-    toast.success('Mascot card downloaded!');
+      // Upload and save the PFP
+      const result = await pfpService.savePFP(file, userId);
+      
+      if (result.success) {
+        setIsAutoSaved(true);
+        toast.success('Profile picture updated successfully');
+        if (onClose) {
+          setTimeout(() => onClose(), 1000);
+        }
+      }
+    } catch (error: unknown) {
+      console.error('Failed to save PFP:', error);
+      let message = 'Failed to save profile picture';
+      if (error instanceof Error) {
+        message = error.message || message;
+      }
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-3xl font-bold text-white">🎴 Your Mascot Card</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white text-2xl"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Card Container */}
-        <div className="flex justify-center mb-8">
-          <div className="relative">
-            {/* Card Back (Before Reveal) */}
-            {!isRevealed && (
-              <div className={`w-80 h-96 rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center transition-all duration-1000 ${isRevealing ? 'animate-spin' : ''}`}>
-                <div className="text-center">
-                  <div className="text-6xl mb-4">🎴</div>
-                  <div className="text-white text-xl font-bold">Mystery Card</div>
-                  <div className="text-gray-400 text-sm">Click to reveal your mascot!</div>
-                </div>
+    <div className="flex flex-col items-center justify-center">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, y: 50 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.6, type: "spring" }}
+        className="relative"
+      >
+        {/* Card Back (Before Reveal) */}
+        {!isRevealed && (
+          <div className="w-[221px] h-[326px] rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-6xl mb-4">🎴</div>
+              <div className="text-white text-xl font-bold">Mystery Card</div>
+              <div className="text-gray-400 text-sm">
+                {isRevealing ? 'Revealing your mascot...' : 'Click to reveal your mascot!'}
               </div>
-            )}
-
-            {/* Card Front (After Reveal) */}
-            {isRevealed && mascotCard && (
-              <div className="w-80 rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 p-4 transform transition-all duration-1000 overflow-hidden">
-                {/* Rarity Badge */}
-                <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold mb-2 ${
-                  mascotCard.rarity === 'Common' ? 'bg-gray-500 text-white' :
-                  mascotCard.rarity === 'Uncommon' ? 'bg-green-500 text-white' :
-                  mascotCard.rarity === 'Rare' ? 'bg-blue-500 text-white' :
-                  mascotCard.rarity === 'Epic' ? 'bg-purple-500 text-white' :
-                  'bg-yellow-500 text-black'
-                }`}>
-                  ✨ {mascotCard.rarity}
-                </div>
-
-                {/* Mascot Composite Image */}
-                <div className="text-center mb-3">
-                  <img 
-                    src={mascotCard.compositeImage} 
-                    alt={mascotCard.name}
-                    className="w-full h-auto rounded-lg mb-2"
-                  />
-                  <div className="text-white font-bold text-xl">{mascotCard.name}</div>
-                </div>
-
-                {/* Description */}
-                <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                  <p className="text-gray-300 text-sm text-center italic">
-                    "{mascotCard.description}"
-                  </p>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Card Front (After Reveal) */}
+        {isRevealed && mascotCard && (
+          <div className="w-[221px] rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 p-4 transform transition-all duration-1000 overflow-hidden mb-6">
+            {/* Rarity Badge */}
+            <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold mb-2 ${
+              mascotCard.rarity === 'Common' ? 'bg-gray-500 text-white' :
+              mascotCard.rarity === 'Uncommon' ? 'bg-green-500 text-white' :
+              mascotCard.rarity === 'Rare' ? 'bg-blue-500 text-white' :
+              mascotCard.rarity === 'Epic' ? 'bg-purple-500 text-white' :
+              'bg-yellow-500 text-black'
+            }`}>
+              ✨ {mascotCard.rarity}
+            </div>
+
+            {/* Mascot Composite Image */}
+            <div className="text-center mb-3">
+              <img 
+                src={mascotCard.compositeImage} 
+                alt={mascotCard.name}
+                className="w-full h-auto rounded-lg mb-2"
+              />
+              <div className="text-white font-bold text-xl">{mascotCard.name}</div>
+            </div>
+
+            {/* Description */}
+            <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+              <p className="text-gray-300 text-sm text-center italic">
+                &quot;{mascotCard.description}&quot;
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
         {!isRevealed && (
-          <div className="text-center">
+          <div className="text-center mt-4">
             <button
               onClick={handleReveal}
               disabled={isRevealing}
-              className="bg-gradient-to-r from-pink-500 to-orange-500 text-white px-8 py-4 rounded-xl font-bold text-xl hover:from-pink-600 hover:to-orange-600 transition-all transform hover:scale-105 disabled:opacity-50"
+              className="bg-gradient-to-r from-pink-500 to-yellow-500 w-full rounded-lg font-medium text-[14px] text-white h-[36px] disabled:opacity-50 px-4 py-2"
             >
               {isRevealing ? '🎴 Revealing...' : '🎴 Reveal Your Mascot!'}
             </button>
@@ -322,61 +363,39 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
         )}
 
         {isRevealed && mascotCard && (
-          <div className="flex flex-wrap gap-3 justify-center">
-            <button
-              onClick={() => {
-                setIsRevealed(false);
-                setMascotCard(null);
-                setIsRevealing(false);
-              }}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-            >
-              <span>🎴</span>
-              Get New Mascot
-            </button>
-            <button
-              onClick={() => handleShare('twitter')}
-              className="bg-[#1DA1F2] text-white px-6 py-3 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-            >
-              <span>𝕏</span>
-              Share on X
-            </button>
-            <button
-              onClick={() => handleShare('telegram')}
-              className="bg-[#0088cc] text-white px-6 py-3 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-            >
-              <span>📱</span>
-              Telegram
-            </button>
-            <button
-              onClick={() => handleShare('facebook')}
-              className="bg-[#1877F2] text-white px-6 py-3 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-            >
-              <span>👥</span>
-              Facebook
-            </button>
-            <button
-              onClick={handleDownload}
-              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-            >
-              <span>📥</span>
-              Download
-            </button>
+          <div className="flex items-center gap-2 mb-2">
+            {isAutoSaved ? (
+              <div className="w-full text-center">
+                <p className="text-sm text-green-400 mb-2">✓ Profile picture set!</p>
+                <button 
+                  onClick={handleSavePFP}
+                  disabled={isSaving}
+                  className="rounded-lg w-full border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
+                >
+                  {isSaving ? 'Updating...' : 'Update Again'} 💾
+                </button>
+              </div>
+            ) : (
+              <>
+                <button 
+                  onClick={handleSavePFP}
+                  className="bg-gradient-to-r from-pink-500 to-yellow-500 w-26.5 rounded-lg font-medium text-[14px] text-white h-[36px] px-4 py-2"
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Setting...' : 'Set as Profile'}
+                </button>
+                <button 
+                  onClick={handleSavePFP}
+                  disabled={isSaving}
+                  className="rounded-lg w-26.5 border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
+                >
+                  {isSaving ? 'Saving...' : 'Save'} 💾
+                </button>
+              </>
+            )}
           </div>
         )}
-
-        {/* Info */}
-        <div className="mt-6 p-4 bg-blue-900 bg-opacity-30 rounded-lg border border-blue-500">
-          <h4 className="font-semibold text-blue-300 mb-2">💡 About Your Mascot</h4>
-          <ul className="text-sm text-blue-200 space-y-1">
-            <li>✅ Each reveal generates a new unique mascot</li>
-            <li>✅ 5 rarity tiers: Common (40%), Uncommon (25%), Rare (17%), Epic (12%), Legendary (6%)</li>
-            <li>✅ 24 different character types with unique traits</li>
-            <li>✅ Use as your profile picture across social media</li>
-            <li>✅ Download high-quality PNG for any use</li>
-          </ul>
-        </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

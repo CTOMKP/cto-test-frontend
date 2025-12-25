@@ -39,7 +39,7 @@ export const PrivyProfilePage: React.FC = () => {
 
       // Try to get user profile from backend
       const response = await axios.get(
-        `${backendUrl}/api/auth/profile`,
+        `${backendUrl}/api/v1/auth/profile`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -126,7 +126,7 @@ export const PrivyProfilePage: React.FC = () => {
 
       console.log('🔄 Fetching wallets from backend...');
       const response = await axios.get(
-        `${backendUrl}/api/auth/privy/wallets`,
+        `${backendUrl}/api/v1/auth/privy/wallets`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -224,7 +224,7 @@ export const PrivyProfilePage: React.FC = () => {
       console.log('🔄 Syncing wallets from Privy...');
       
       const response = await axios.post(
-        `${backendUrl}/api/auth/privy/sync-wallets`,
+        `${backendUrl}/api/v1/auth/privy/sync-wallets`,
         {},
         {
           headers: {

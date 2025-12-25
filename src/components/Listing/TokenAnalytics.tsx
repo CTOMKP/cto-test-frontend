@@ -56,9 +56,9 @@ export const TokenAnalytics: React.FC<TokenAnalyticsProps> = ({
     try {
       // Fetch all analytics data in parallel
       const [holdersRes, transfersRes, chartRes] = await Promise.allSettled([
-        axios.get(`${backendUrl}/api/listing/holders/${contractAddress}?chain=${chain}`),
-        axios.get(`${backendUrl}/api/listing/transfers/${contractAddress}?chain=${chain}`),
-        axios.get(`${backendUrl}/api/listing/chart/${contractAddress}?chain=${chain}&timeframe=1h`),
+        axios.get(`${backendUrl}/api/v1/listing/holders/${contractAddress}?chain=${chain}`),
+        axios.get(`${backendUrl}/api/v1/listing/transfers/${contractAddress}?chain=${chain}`),
+        axios.get(`${backendUrl}/api/v1/listing/chart/${contractAddress}?chain=${chain}&timeframe=1h`),
       ]);
 
       // Process holder data
