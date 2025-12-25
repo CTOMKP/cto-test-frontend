@@ -14,7 +14,7 @@ class PrivyService {
   async syncUser(privyToken: string) {
     try {
       const response = await axios.post(
-        `${API_ENDPOINTS.auth.base}/privy/sync`,
+        `${API_ENDPOINTS.auth.base}/api/v1/auth/privy/sync`,
         { privyToken },
         {
           headers: {
@@ -52,7 +52,7 @@ class PrivyService {
   async verifyToken(token: string) {
     try {
       const response = await axios.post(
-        `${API_ENDPOINTS.auth.base}/privy/verify`,
+        `${API_ENDPOINTS.auth.base}/api/v1/auth/privy/verify`,
         { token },
         {
           headers: {
