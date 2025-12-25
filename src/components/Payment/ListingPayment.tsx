@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { paymentService } from '../../services/paymentService';
-import { authService } from '../../services/authService';
+import { privyService } from '../../services/privyService';
 import { privyPaymentService } from '../../services/privyPaymentService';
 import { movementPaymentService } from '../../services/movementPaymentService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
@@ -79,7 +79,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
         if (!movementWallet) {
           console.log('🔍 Wallet not in Privy object, checking backend DB...');
           try {
-            const walletResult = await authService.getUserWallets();
+            const walletResult = await privyService.getUserWallets();
             const wallets = walletResult?.data?.wallets || walletResult?.wallets || [];
             const dbWallet = wallets.find((w: any) => 
               w.blockchain?.toUpperCase() === 'MOVEMENT' || 

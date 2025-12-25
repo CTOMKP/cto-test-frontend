@@ -80,7 +80,7 @@ class PrivyService {
       }
 
       const response = await axios.get(
-        `${API_ENDPOINTS.auth.base}/privy/me`,
+        `${API_ENDPOINTS.auth.base}/api/v1/auth/privy/me`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -91,6 +91,32 @@ class PrivyService {
       return response.data;
     } catch (error) {
       console.error('❌ Get user error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user wallets from backend
+   */
+  async getUserWallets() {
+    try {
+      const token = localStorage.getItem('cto_token');
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await axios.get(
+        `${API_ENDPOINTS.auth.base}/api/v1/auth/privy/wallets`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Get wallets error:', error);
       throw error;
     }
   }
