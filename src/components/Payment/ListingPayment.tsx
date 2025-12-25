@@ -165,10 +165,9 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
             toast.error('Movement wallet not found. Please refresh your profile page.');
           } else if (errorMsg.includes('Insufficient balance')) {
             toast.error('Insufficient balance. Your wallet has 0 MOVE. Please fund it with test tokens.');
-          } else if (errorMsg.includes('Network error') || errorMsg.includes('ENOTFOUND')) {
-            toast.error('Network error connecting to Movement. Please try again.');
           } else {
-            toast.error(`Error: ${errorMsg}`);
+            // Show the actual error message from the backend instead of hiding it
+            toast.error(errorMsg);
           }
           return;
         }
