@@ -153,7 +153,7 @@ export const userListingsService = {
     return responseData;
   },
   async mine() {
-    const res = await axios.get(`${backendUrl}/api/v1/user-listings/mine/all`, { headers: authHeaders() });
+    const res = await axios.get(`${backendUrl}/api/v1/user-listings/mine`, { headers: authHeaders() });
     // Handle wrapped response from TransformInterceptor
     const responseData = res.data?.data || res.data;
     return responseData;
