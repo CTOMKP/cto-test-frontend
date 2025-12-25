@@ -61,13 +61,20 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
     setLoading(true);
     try {
       // Movement payment flow (preferred for user listings)
-      if (paymentMethod === 'movement' && isPrivyUser) {
+      if (paymentMethod === 'movement') {
         console.log('💳 Using Movement payment flow');
+        
+        // Ensure user is actually logged in with Privy
+        if (!isPrivyUser) {
+          toast.error('Privy session not found. Please log out and log back in.');
+          setLoading(false);
+          return;
+        }
         
         // Check if user has Movement wallet
         const movementWallet = getMovementWallet(user);
         if (!movementWallet) {
-          toast.error('No Movement wallet found. Please ensure your Privy wallet is connected to Movement network.');
+          toast.error('No Movement wallet found. Please refresh your profile page to sync your wallet.');
           setLoading(false);
           return;
         }
