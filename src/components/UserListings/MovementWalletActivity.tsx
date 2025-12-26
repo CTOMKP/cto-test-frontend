@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { movementWalletService, WalletBalance, WalletTransaction } from '../../services/movementWalletService';
 import { useAuth } from '../../hooks/useAuth';
+import { authService } from '../../services/authService';
 import toast from 'react-hot-toast';
 
 export const MovementWalletActivity: React.FC = () => {
@@ -11,21 +12,46 @@ export const MovementWalletActivity: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
 
-  // STRATEGIC FIX: Find the wallet ID even if it's not in the main user object
+  // STRATEGIC FIX: Find the wallet ID by directly calling the wallet API
+  // This bypasses any issues with the user profile response
   useEffect(() => {
-    const userAny = user as any;
-    if (userAny?.walletId) {
-      setActiveWalletId(userAny.walletId);
-    } else if (userAny?.wallets) {
-      const moveWallet = userAny.wallets.find((w: any) => 
-        w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
-      );
-      if (moveWallet) {
-        setActiveWalletId(moveWallet.id);
-        // Persist it for next time
-        localStorage.setItem('cto_wallet_id', moveWallet.id);
+    const findAndSetWallet = async () => {
+      const userAny = user as any;
+      const userId = userAny?.id || localStorage.getItem('cto_user_id');
+      
+      console.log('🔍 MovementWalletActivity: Fetching wallet directly...', { userId });
+
+      if (!userId) return;
+
+      try {
+        // We know the user has a Movement wallet in the DB. 
+        // Let's just ask the backend for ALL wallets for this user.
+        const token = localStorage.getItem('cto_auth_token');
+        const API_BASE = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
+        
+        const response = await fetch(`${API_BASE}/api/v1/auth/privy/wallets`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        const wallets = data?.data?.wallets || data?.wallets || [];
+        
+        const moveWallet = wallets.find((w: any) => 
+          w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
+        );
+
+        if (moveWallet) {
+          console.log('✅ Found Movement wallet directly:', moveWallet.id);
+          setActiveWalletId(moveWallet.id);
+          localStorage.setItem('cto_wallet_id', moveWallet.id);
+        } else {
+          console.warn('⚠️ No Movement wallet found in /wallets API');
+        }
+      } catch (err) {
+        console.error('❌ Direct wallet fetch failed', err);
       }
-    }
+    };
+
+    findAndSetWallet();
   }, [user]);
 
   const loadData = useCallback(async (showLoading = true) => {

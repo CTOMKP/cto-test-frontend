@@ -296,105 +296,120 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.8, y: 50 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.6, type: "spring" }}
-        className="relative"
+        className="relative bg-black border-[2px] border-[#86868630] rounded-2xl p-6 max-w-[400px] w-full shadow-2xl"
       >
-        {/* Card Back (Before Reveal) */}
-        {!isRevealed && (
-          <div className="w-[221px] h-[326px] rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-6xl mb-4">🎴</div>
-              <div className="text-white text-xl font-bold">Mystery Card</div>
-              <div className="text-gray-400 text-sm">
-                {isRevealing ? 'Revealing your mascot...' : 'Click to reveal your mascot!'}
+        {/* Close Button */}
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        )}
+
+        <div className="flex flex-col items-center justify-center">
+          {/* Card Back (Before Reveal) */}
+          {!isRevealed && (
+            <div className="w-[221px] h-[326px] rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-6xl mb-4">🎴</div>
+                <div className="text-white text-xl font-bold">Mystery Card</div>
+                <div className="text-gray-400 text-sm">
+                  {isRevealing ? 'Revealing your mascot...' : 'Click to reveal your mascot!'}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Card Front (After Reveal) */}
-        {isRevealed && mascotCard && (
-          <div className="w-[221px] rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 p-4 transform transition-all duration-1000 overflow-hidden mb-6">
-            {/* Rarity Badge */}
-            <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold mb-2 ${
-              mascotCard.rarity === 'Common' ? 'bg-gray-500 text-white' :
-              mascotCard.rarity === 'Uncommon' ? 'bg-green-500 text-white' :
-              mascotCard.rarity === 'Rare' ? 'bg-blue-500 text-white' :
-              mascotCard.rarity === 'Epic' ? 'bg-purple-500 text-white' :
-              'bg-yellow-500 text-black'
-            }`}>
-              ✨ {mascotCard.rarity}
-            </div>
-
-            {/* Mascot Composite Image */}
-            <div className="text-center mb-3">
-              <img 
-                src={mascotCard.compositeImage} 
-                alt={mascotCard.name}
-                className="w-full h-auto rounded-lg mb-2"
-              />
-              <div className="text-white font-bold text-xl">{mascotCard.name}</div>
-            </div>
-
-            {/* Description */}
-            <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-              <p className="text-gray-300 text-sm text-center italic">
-                &quot;{mascotCard.description}&quot;
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        {!isRevealed && (
-          <div className="text-center mt-4">
-            <button
-              onClick={handleReveal}
-              disabled={isRevealing}
-              className="bg-gradient-to-r from-pink-500 to-yellow-500 w-full rounded-lg font-medium text-[14px] text-white h-[36px] disabled:opacity-50 px-4 py-2"
-            >
-              {isRevealing ? '🎴 Revealing...' : '🎴 Reveal Your Mascot!'}
-            </button>
-          </div>
-        )}
-
-        {isRevealed && mascotCard && (
-          <div className="flex items-center gap-2 mb-2">
-            {isAutoSaved ? (
-              <div className="w-full text-center">
-                <p className="text-sm text-green-400 mb-2">✓ Profile picture set!</p>
-                <button 
-                  onClick={handleSavePFP}
-                  disabled={isSaving}
-                  className="rounded-lg w-full border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
-                >
-                  {isSaving ? 'Updating...' : 'Update Again'} 💾
-                </button>
+          {/* Card Front (After Reveal) */}
+          {isRevealed && mascotCard && (
+            <div className="w-[221px] rounded-xl border-4 border-pink-500 bg-gradient-to-br from-gray-800 to-gray-900 p-4 transform transition-all duration-1000 overflow-hidden mb-6">
+              {/* Rarity Badge */}
+              <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold mb-2 ${
+                mascotCard.rarity === 'Common' ? 'bg-gray-500 text-white' :
+                mascotCard.rarity === 'Uncommon' ? 'bg-green-500 text-white' :
+                mascotCard.rarity === 'Rare' ? 'bg-blue-500 text-white' :
+                mascotCard.rarity === 'Epic' ? 'bg-purple-500 text-white' :
+                'bg-yellow-500 text-black'
+              }`}>
+                ✨ {mascotCard.rarity}
               </div>
-            ) : (
-              <>
-                <button 
-                  onClick={handleSavePFP}
-                  className="bg-gradient-to-r from-pink-500 to-yellow-500 w-26.5 rounded-lg font-medium text-[14px] text-white h-[36px] px-4 py-2"
-                  disabled={isSaving}
-                >
-                  {isSaving ? 'Setting...' : 'Set as Profile'}
-                </button>
-                <button 
-                  onClick={handleSavePFP}
-                  disabled={isSaving}
-                  className="rounded-lg w-26.5 border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
-                >
-                  {isSaving ? 'Saving...' : 'Save'} 💾
-                </button>
-              </>
-            )}
-          </div>
-        )}
+
+              {/* Mascot Composite Image */}
+              <div className="text-center mb-3">
+                <img 
+                  src={mascotCard.compositeImage} 
+                  alt={mascotCard.name}
+                  className="w-full h-auto rounded-lg mb-2"
+                />
+                <div className="text-white font-bold text-xl">{mascotCard.name}</div>
+              </div>
+
+              {/* Description */}
+              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                <p className="text-gray-300 text-sm text-center italic">
+                  &quot;{mascotCard.description}&quot;
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          {!isRevealed && (
+            <div className="text-center mt-4 w-full">
+              <button
+                onClick={handleReveal}
+                disabled={isRevealing}
+                className="bg-gradient-to-r from-pink-500 to-yellow-500 w-full rounded-lg font-medium text-[14px] text-white h-[36px] disabled:opacity-50 px-4 py-2"
+              >
+                {isRevealing ? '🎴 Revealing...' : '🎴 Reveal Your Mascot!'}
+              </button>
+            </div>
+          )}
+
+          {isRevealed && mascotCard && (
+            <div className="flex flex-col items-center gap-2 mb-2 w-full">
+              {isAutoSaved ? (
+                <div className="w-full text-center">
+                  <p className="text-sm text-green-400 mb-2">✓ Profile picture set!</p>
+                  <button 
+                    onClick={handleSavePFP}
+                    disabled={isSaving}
+                    className="rounded-lg w-full border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
+                  >
+                    {isSaving ? 'Updating...' : 'Update Again'} 💾
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 w-full">
+                  <button 
+                    onClick={handleSavePFP}
+                    className="bg-gradient-to-r from-pink-500 to-yellow-500 flex-1 rounded-lg font-medium text-[14px] text-white h-[36px] px-4 py-2"
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Setting...' : 'Set as Profile'}
+                  </button>
+                  <button 
+                    onClick={handleSavePFP}
+                    disabled={isSaving}
+                    className="rounded-lg flex-1 border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
+                  >
+                    {isSaving ? 'Saving...' : 'Save'} 💾
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </motion.div>
     </div>
   );

@@ -4,6 +4,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
+import { MovementWalletActivity } from '../UserListings/MovementWalletActivity';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -308,6 +309,9 @@ export const PrivyProfilePage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* PROFESSIONAL ADDITION: Movement Wallet Dashboard */}
+        <MovementWalletActivity />
 
         {/* Navigation */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">

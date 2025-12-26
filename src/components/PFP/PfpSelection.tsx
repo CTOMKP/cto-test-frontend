@@ -163,25 +163,7 @@ const PfpSelection: React.FC<PfpSelectionProps> = ({ onClose }) => {
 
           <AnimatePresence mode="wait">
             {phase === "selected" && selectedCardId && (
-              <motion.div
-                key="mascot-reveal"
-                initial={{ opacity: 0, y: 200, scale: 0.7 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{
-                  opacity: 0,
-                  y: 100,
-                  scale: 0.8,
-                  transition: { duration: 0.4 },
-                }}
-                transition={{
-                  duration: 0.8,
-                  type: "spring",
-                  stiffness: 100,
-                  damping: 14,
-                }}
-              >
-                <CardReveal onClose={() => setPhase("spread")} />
-              </motion.div>
+              <CardReveal onClose={() => setPhase("spread")} />
             )}
           </AnimatePresence>
         </div>

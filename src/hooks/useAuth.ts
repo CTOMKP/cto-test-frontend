@@ -117,21 +117,23 @@ export const useAuth = () => {
       
       // First check localStorage for existing auth data
       const storedEmail = localStorage.getItem('cto_user_email');
+      const storedUserId = localStorage.getItem('cto_user_id'); // Real numeric ID
       const storedToken = localStorage.getItem('cto_auth_token');
       const storedWalletId = localStorage.getItem('cto_wallet_id');
       
       console.log('🔄 Checking localStorage for auth data:');
+      console.log('🔄 storedUserId:', storedUserId);
       console.log('🔄 storedEmail:', storedEmail);
-      console.log('🔄 storedToken:', storedToken);
+      console.log('🔄 storedToken:', !!storedToken);
       console.log('🔄 storedWalletId:', storedWalletId);
       
       // Authenticate immediately only if we also have a token
-      if (storedEmail && storedWalletId && storedToken) {
-        console.log('✅ Found user with wallet and token, immediately authenticated');
+      if (storedUserId && storedToken) {
+        console.log('✅ Found user with ID and token, immediately authenticated');
         const user: User = {
-          id: storedEmail,
-          email: storedEmail,
-          walletId: storedWalletId,
+          id: storedUserId,
+          email: storedEmail || '',
+          walletId: storedWalletId || '',
           createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -180,16 +182,19 @@ export const useAuth = () => {
 
       if (user) {
         console.log('User found, setting authenticated state');
-        console.log('🔄 User details:', user);
-        console.log('🔄 User ID:', user.id);
-        console.log('🔄 User email:', user.email);
+        console.log('🔄 User details from API:', user);
+        
+        // STRATEGIC FIX: Update localStorage with the real numeric ID and walletId from the API
+        if (user.id) localStorage.setItem('cto_user_id', String(user.id));
+        if (user.walletId) localStorage.setItem('cto_wallet_id', user.walletId);
+        
         setAuthState({
           user,
           isAuthenticated: true,
           isLoading: false,
           error: null,
         });
-        console.log('✅ Authenticated state set successfully');
+        console.log('✅ Authenticated state set with full profile data');
       } else {
         console.log('No user found, setting unauthenticated state');
         setAuthState({
