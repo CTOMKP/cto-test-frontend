@@ -6,6 +6,7 @@ import userListingsService from '../../services/userListingsService';
 // which converts CloudFront URLs back to backend API URLs, causing CORS errors
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import { ListingPayment } from '../Payment/ListingPayment';
+import { MovementWalletActivity } from './MovementWalletActivity';
 import { paymentService } from '../../services/paymentService';
 import toast from 'react-hot-toast';
 
@@ -86,6 +87,10 @@ export const MyUserListings: React.FC = () => {
         </div>
       </div>
       {error && <div className="bg-red-50 text-red-700 border border-red-200 rounded p-3 mb-4 text-sm">{error}</div>}
+      
+      {/* PROFESSIONAL ADDITION: Movement Wallet Activity & Balance */}
+      <MovementWalletActivity />
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600"></div>
