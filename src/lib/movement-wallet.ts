@@ -129,9 +129,11 @@ export async function sendMovementTransaction(
   signRawHash: (input: SignRawHashInput) => Promise<SignRawHashOutput>
 ): Promise<string> {
   try {
-    // Initialize Movement client (uses Movement testnet)
+    // Initialize Movement client (uses Movement Bardock)
+    // STRATEGIC FIX: Use Network.CUSTOM instead of Network.TESTNET
+    // This prevents the BAD_CHAIN_ID error by forcing the SDK to fetch the correct Chain ID from the node.
     const movementConfig = new AptosConfig({
-      network: Network.TESTNET,
+      network: Network.CUSTOM,
       fullnode: process.env.REACT_APP_MOVEMENT_NODE_URL || 'https://testnet.movementnetwork.xyz/v1',
     });
     const movement = new Aptos(movementConfig);
