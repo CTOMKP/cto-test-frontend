@@ -132,7 +132,7 @@ export async function sendMovementTransaction(
     // Initialize Movement client (uses Movement testnet)
     const movementConfig = new AptosConfig({
       network: Network.TESTNET,
-      fullnode: process.env.REACT_APP_MOVEMENT_NODE_URL || 'https://full.testnet.movementinfra.xyz/v1',
+      fullnode: process.env.REACT_APP_MOVEMENT_NODE_URL || 'https://testnet.movementnetwork.xyz/v1',
     });
     const movement = new Aptos(movementConfig);
 
