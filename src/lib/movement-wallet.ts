@@ -179,7 +179,19 @@ export async function sendMovementTransaction(
     });
 
     // Create authenticator
-    const publicKeyBytes = Buffer.from(publicKey.replace('0x', ''), 'hex');
+    // STRATEGIC FIX: Aggressively clean the public key to ensure it is exactly 32 bytes
+    let cleanPublicKey = publicKey.replace('0x', '');
+    
+    // Some keys come with a leading 00 for ed25519 representation
+    if (cleanPublicKey.length === 66 && cleanPublicKey.startsWith('00')) {
+      cleanPublicKey = cleanPublicKey.substring(2);
+    }
+
+    if (cleanPublicKey.length !== 64) {
+      throw new Error(`Invalid public key length: expected 64 hex characters (32 bytes), got ${cleanPublicKey.length}`);
+    }
+
+    const publicKeyBytes = Buffer.from(cleanPublicKey, 'hex');
     const signatureBytes = Buffer.from(signature.replace('0x', ''), 'hex');
 
     const senderAuthenticator = new AccountAuthenticatorEd25519(
