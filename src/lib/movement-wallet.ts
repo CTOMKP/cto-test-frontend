@@ -160,10 +160,17 @@ export async function sendMovementTransaction(
     // Type assertion: transactionData.function is validated to have the correct format
     const functionName = transactionData.function as `${string}::${string}::${string}`;
 
+    // STRATEGIC FIX: Automatically use aptos_account::transfer_coins for MOVE transfers
+    // This handles uninitialized recipient accounts (ECOIN_STORE_NOT_PUBLISHED)
+    let finalFunctionName = functionName;
+    if (functionName === "0x1::coin::transfer") {
+      finalFunctionName = "0x1::aptos_account::transfer_coins";
+    }
+
     const rawTxn = await movement.transaction.build.simple({
       sender: senderAddress,
       data: {
-        function: functionName,
+        function: finalFunctionName,
         typeArguments: transactionData.type_arguments,
         functionArguments: functionArguments,
       },
