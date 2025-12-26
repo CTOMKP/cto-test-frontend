@@ -9,17 +9,33 @@ export const MovementWalletActivity: React.FC = () => {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
 
-  const walletId = user?.walletId;
+  // STRATEGIC FIX: Find the wallet ID even if it's not in the main user object
+  useEffect(() => {
+    const userAny = user as any;
+    if (userAny?.walletId) {
+      setActiveWalletId(userAny.walletId);
+    } else if (userAny?.wallets) {
+      const moveWallet = userAny.wallets.find((w: any) => 
+        w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
+      );
+      if (moveWallet) {
+        setActiveWalletId(moveWallet.id);
+        // Persist it for next time
+        localStorage.setItem('cto_wallet_id', moveWallet.id);
+      }
+    }
+  }, [user]);
 
   const loadData = useCallback(async (showLoading = true) => {
-    if (!walletId) return;
+    if (!activeWalletId) return;
     
     try {
       if (showLoading) setLoading(true);
       const [balanceData, txData] = await Promise.all([
-        movementWalletService.getBalance(walletId),
-        movementWalletService.getTransactions(walletId, 5)
+        movementWalletService.getBalance(activeWalletId),
+        movementWalletService.getTransactions(activeWalletId, 5)
       ]);
       setBalances(balanceData);
       setTransactions(txData);
@@ -28,17 +44,17 @@ export const MovementWalletActivity: React.FC = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [walletId]);
+  }, [activeWalletId]);
 
   const handleSync = async () => {
-    if (!walletId) return;
+    if (!activeWalletId) return;
     
     setSyncing(true);
     try {
       toast.loading('Syncing with Movement blockchain...', { id: 'wallet-sync' });
       
       // 1. Poll for new transactions (Detect funding/payments)
-      await movementWalletService.pollTransactions(walletId);
+      await movementWalletService.pollTransactions(activeWalletId);
       
       // 2. Refresh local data
       await loadData(false);
@@ -53,10 +69,12 @@ export const MovementWalletActivity: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (activeWalletId) {
+      loadData();
+    }
+  }, [loadData, activeWalletId]);
 
-  if (!walletId) return null;
+  if (!activeWalletId) return null;
 
   const moveBalance = balances.find(b => b.tokenSymbol === 'MOVE');
   const displayBalance = moveBalance 
@@ -86,7 +104,7 @@ export const MovementWalletActivity: React.FC = () => {
           </button>
         </div>
         <p className="mt-2 text-[10px] opacity-70 font-mono break-all">
-          Wallet: {moveBalance?.walletId || walletId}
+          Wallet: {moveBalance?.walletId || activeWalletId}
         </p>
       </div>
 
