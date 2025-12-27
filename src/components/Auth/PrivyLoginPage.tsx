@@ -42,12 +42,12 @@ export const PrivyLoginPage: React.FC = () => {
         const hasAnyWallet = currentUser.linkedAccounts.some(acc => acc.type === 'wallet');
         if (hasAnyWallet) {
           console.log(`✅ Privy wallets loaded after ${i + 1} attempt(s)`);
-          return true;
+        return true;
         }
       }
       
       console.log(`⏳ Waiting for Privy wallets to load... (attempt ${i + 1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise(resolve => setTimeout(resolve, delayMs));
     }
     
     console.warn('⚠️ Privy accounts not fully loaded, proceeding anyway...');

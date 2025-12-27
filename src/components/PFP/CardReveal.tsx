@@ -138,7 +138,7 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
   const [isRevealed, setIsRevealed] = useState(false);
   const [mascotCard, setMascotCard] = useState<MascotCard | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isAutoSaved, setIsAutoSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   // Generate mascot based on wallet address + timestamp + random
   const generateMascot = async (): Promise<MascotCard> => {
@@ -218,44 +218,6 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
     return null;
   };
 
-  // Auto-save PFP when mascot is revealed
-  useEffect(() => {
-    const handleSavePFP = async () => {
-      if (!mascotCard || !isRevealed || isAutoSaved || isSaving) return;
-
-      try {
-        // Convert data URL to File
-        const dataUrl = mascotCard.compositeImage;
-        const response = await fetch(dataUrl);
-        const blob = await response.blob();
-        const file = new File([blob], `mascot-${mascotCard.id}.png`, { type: 'image/png' });
-
-        // Get user ID from localStorage
-        const userId = getUserId();
-
-        if (!userId) {
-          console.warn('User ID not found, skipping auto-save. Please ensure you are logged in.');
-          return;
-        }
-
-        // Save PFP automatically (silent - no toast)
-        const result = await pfpService.savePFP(file, userId);
-        
-        if (result.success) {
-          setIsAutoSaved(true);
-          console.log('✅ PFP auto-saved successfully:', result.imageUrl);
-        }
-      } catch (error) {
-        console.error('Failed to auto-save PFP:', error);
-      }
-    };
-
-    // Trigger auto-save when mascot is revealed
-    if (isRevealed && mascotCard) {
-      handleSavePFP();
-    }
-  }, [mascotCard, isRevealed, isAutoSaved, isSaving]);
-
   const handleSavePFP = async () => {
     if (!mascotCard) return;
     
@@ -277,10 +239,10 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
       const result = await pfpService.savePFP(file, userId);
       
       if (result.success) {
-        setIsAutoSaved(true);
+        setIsSaved(true);
         toast.success('Profile picture updated successfully');
         if (onClose) {
-          setTimeout(() => onClose(), 1000);
+          setTimeout(() => onClose(), 1500);
         }
       }
     } catch (error: unknown) {
@@ -293,6 +255,26 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleShareOnX = () => {
+    if (!mascotCard) return;
+    
+    const text = `I just revealed my CTO Marketplace Mascot! 🎴\n\nI got a ${mascotCard.rarity} ${mascotCard.name}! ✨\n\n"${mascotCard.description}"\n\nReveal yours at:`;
+    const url = window.location.origin;
+    const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+    
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownload = () => {
+    if (!mascotCard) return;
+    
+    const link = document.createElement('a');
+    link.download = `cto-mascot-${mascotCard.name.toLowerCase().replace(/\s+/g, '-')}.png`;
+    link.href = mascotCard.compositeImage;
+    link.click();
+    toast.success('Mascot image downloaded! 📥');
   };
 
   return (
@@ -378,33 +360,58 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
 
           {isRevealed && mascotCard && (
             <div className="flex flex-col items-center gap-2 mb-2 w-full">
-              {isAutoSaved ? (
+              {isSaved ? (
                 <div className="w-full text-center">
-                  <p className="text-sm text-green-400 mb-2">✓ Profile picture set!</p>
-                  <button 
-                    onClick={handleSavePFP}
-                    disabled={isSaving}
-                    className="rounded-lg w-full border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
-                  >
-                    {isSaving ? 'Updating...' : 'Update Again'} 💾
-                  </button>
+                  <p className="text-sm text-green-400 mb-2 font-medium">✓ Profile picture updated!</p>
+                  <div className="flex gap-2 mb-3">
+                    <button 
+                      onClick={handleShareOnX}
+                      className="flex-1 bg-white text-black hover:bg-gray-200 transition-colors rounded-lg font-bold text-[14px] h-[36px] flex items-center justify-center gap-2"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+                      </svg>
+                      Share on X
+                    </button>
+                    <button 
+                      onClick={handleDownload}
+                      className="w-[40px] bg-gray-800 text-white hover:bg-gray-700 transition-colors rounded-lg flex items-center justify-center h-[36px]"
+                      title="Download Image"
+                    >
+                      📥
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="flex gap-2 w-full">
-                  <button 
-                    onClick={handleSavePFP}
-                    className="bg-gradient-to-r from-pink-500 to-yellow-500 flex-1 rounded-lg font-medium text-[14px] text-white h-[36px] px-4 py-2"
-                    disabled={isSaving}
-                  >
-                    {isSaving ? 'Setting...' : 'Set as Profile'}
-                  </button>
-                  <button 
-                    onClick={handleSavePFP}
-                    disabled={isSaving}
-                    className="rounded-lg flex-1 border-[0.2px] border-[#FFFFFF20] font-medium text-[14px] text-[#FFFFFF50] disabled:opacity-50 px-4 py-2"
-                  >
-                    {isSaving ? 'Saving...' : 'Save'} 💾
-                  </button>
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleSavePFP}
+                      className="bg-gradient-to-r from-pink-500 to-yellow-500 flex-1 rounded-lg font-bold text-[14px] text-white h-[40px] px-4"
+                      disabled={isSaving}
+                    >
+                      {isSaving ? 'Setting...' : 'Set as Profile Picture'}
+                    </button>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleShareOnX}
+                      className="flex-1 bg-white text-black hover:bg-gray-200 transition-colors rounded-lg font-bold text-[14px] h-[36px] flex items-center justify-center gap-2"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+                      </svg>
+                      Share on X
+                    </button>
+                    <button 
+                      onClick={handleDownload}
+                      className="w-[40px] bg-gray-800 text-white hover:bg-gray-700 transition-colors rounded-lg flex items-center justify-center h-[36px]"
+                      title="Download Image"
+                    >
+                      📥
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

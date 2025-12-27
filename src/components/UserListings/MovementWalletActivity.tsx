@@ -2,21 +2,32 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { movementWalletService, WalletBalance, WalletTransaction } from '../../services/movementWalletService';
 import { useAuth } from '../../hooks/useAuth';
 import { authService } from '../../services/authService';
+import { sendMovementTransaction, getMovementWallet } from '../../lib/movement-wallet';
+import { useSignRawHash } from "@privy-io/react-auth/extended-chains";
+import { usePrivy } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
 
 export const MovementWalletActivity: React.FC = () => {
-  const { user } = useAuth();
+  const { user: dbUser } = useAuth();
+  const { user: privyUser } = usePrivy();
+  const { signRawHash } = useSignRawHash();
   const [balances, setBalances] = useState<WalletBalance[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
 
+  // Send Form State
+  const [showSendForm, setShowSendForm] = useState(false);
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [sending, setSending] = useState(false);
+
   // STRATEGIC FIX: Find the wallet ID by directly calling the wallet API
   // This bypasses any issues with the user profile response
   useEffect(() => {
     const findAndSetWallet = async () => {
-      const userAny = user as any;
+      const userAny = dbUser as any;
       const userId = userAny?.id || localStorage.getItem('cto_user_id');
       
       console.log('🔍 MovementWalletActivity: Fetching wallet directly...', { userId });
@@ -52,7 +63,7 @@ export const MovementWalletActivity: React.FC = () => {
     };
 
     findAndSetWallet();
-  }, [user]);
+  }, [dbUser]);
 
   const loadData = useCallback(async (showLoading = true) => {
     if (!activeWalletId) return;
@@ -72,12 +83,14 @@ export const MovementWalletActivity: React.FC = () => {
     }
   }, [activeWalletId]);
 
-  const handleSync = async () => {
+  const handleSync = async (silent = false) => {
     if (!activeWalletId) return;
     
     setSyncing(true);
     try {
-      toast.loading('Syncing with Movement blockchain...', { id: 'wallet-sync' });
+      if (!silent) {
+        toast.loading('Syncing with Movement blockchain...', { id: 'wallet-sync' });
+      }
       
       // 1. Poll for new transactions (Detect funding/payments)
       await movementWalletService.pollTransactions(activeWalletId);
@@ -85,27 +98,101 @@ export const MovementWalletActivity: React.FC = () => {
       // 2. Refresh local data
       await loadData(false);
       
-      toast.success('Wallet synced successfully', { id: 'wallet-sync' });
+      if (!silent) {
+        toast.success('Wallet synced successfully', { id: 'wallet-sync' });
+      }
     } catch (error: any) {
       console.error('Sync failed:', error);
-      toast.error('Sync failed: ' + (error.message || 'Unknown error'), { id: 'wallet-sync' });
+      if (!silent) {
+        toast.error('Sync failed: ' + (error.message || 'Unknown error'), { id: 'wallet-sync' });
+      }
     } finally {
       setSyncing(false);
     }
   };
 
+  const handleSend = async () => {
+    if (!recipient || !amount) {
+      toast.error('Please enter recipient and amount');
+      return;
+    }
+
+    const moveWallet = getMovementWallet(privyUser);
+    if (!moveWallet) {
+      toast.error('No Movement wallet found');
+      return;
+    }
+
+    setSending(true);
+    const toastId = toast.loading('Sending MOVE...');
+
+    try {
+      // Basic MOVE transfer (8 decimals)
+      const moveAmount = Math.floor(parseFloat(amount) * 100000000).toString();
+      
+      const txData = {
+        type: 'entry_function_payload',
+        function: '0x1::aptos_account::transfer_coins',
+        type_arguments: ['0x1::aptos_coin::AptosCoin'],
+        arguments: [recipient, moveAmount],
+      };
+
+      const hash = await sendMovementTransaction(
+        txData,
+        moveWallet.address,
+        moveWallet.publicKey,
+        signRawHash as any
+      );
+
+      toast.success('Transfer successful!', { id: toastId });
+      setShowSendForm(false);
+      setRecipient('');
+      setAmount('');
+      
+      // Refresh after a short delay
+      setTimeout(() => handleSync(true), 2000);
+    } catch (error: any) {
+      console.error('Send failed:', error);
+      toast.error('Send failed: ' + (error.message || 'Unknown error'), { id: toastId });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // INITIAL SYNC ON MOUNT
   useEffect(() => {
     if (activeWalletId) {
       loadData();
+      // Auto-sync once on mount to get latest from blockchain
+      handleSync(true);
     }
-  }, [loadData, activeWalletId]);
+  }, [activeWalletId]);
+
+  // PERIODIC BACKGROUND POLLING (Every 30 seconds)
+  useEffect(() => {
+    if (!activeWalletId) return;
+
+    const intervalId = setInterval(() => {
+      console.log('🔄 Performing periodic background wallet sync...');
+      handleSync(true);
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, [activeWalletId]);
 
   if (!activeWalletId) return null;
 
+  // Prioritize USDC.e balance for display
+  const usdcBalance = balances.find(b => b.tokenSymbol === 'USDC.e');
   const moveBalance = balances.find(b => b.tokenSymbol === 'MOVE');
-  const displayBalance = moveBalance 
-    ? (parseFloat(moveBalance.balance) / Math.pow(10, moveBalance.decimals)).toFixed(2)
-    : '0.00';
+  
+  const displayBalance = usdcBalance 
+    ? (parseFloat(usdcBalance.balance) / Math.pow(10, usdcBalance.decimals)).toFixed(2)
+    : moveBalance 
+      ? (parseFloat(moveBalance.balance) / Math.pow(10, moveBalance.decimals)).toFixed(2)
+      : '0.00';
+
+  const displaySymbol = usdcBalance ? 'USDC' : 'MOVE';
 
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
@@ -115,11 +202,11 @@ export const MovementWalletActivity: React.FC = () => {
             <p className="text-xs opacity-80 uppercase tracking-wider font-semibold">Movement Balance</p>
             <div className="flex items-baseline gap-2">
               <h2 className="text-3xl font-bold">{displayBalance}</h2>
-              <span className="text-sm font-medium opacity-90">MOVE</span>
+              <span className="text-sm font-medium opacity-90">{displaySymbol}</span>
             </div>
           </div>
           <button 
-            onClick={handleSync}
+            onClick={() => handleSync(false)}
             disabled={syncing}
             className={`p-2 bg-white/20 hover:bg-white/30 rounded-full transition-all ${syncing ? 'animate-spin' : ''}`}
             title="Sync with Blockchain"
@@ -132,6 +219,50 @@ export const MovementWalletActivity: React.FC = () => {
         <p className="mt-2 text-[10px] opacity-70 font-mono break-all">
           Wallet: {moveBalance?.walletId || activeWalletId}
         </p>
+        
+        <div className="mt-4 flex gap-2">
+          <button 
+            onClick={() => setShowSendForm(!showSendForm)}
+            className="flex-1 py-2 px-4 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+            Send MOVE
+          </button>
+        </div>
+
+        {showSendForm && (
+          <div className="mt-4 p-3 bg-black/10 rounded-lg space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div>
+              <label className="text-[10px] uppercase font-bold opacity-70">Recipient Address</label>
+              <input 
+                type="text"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder="0x..."
+                className="w-full mt-1 px-3 py-1.5 bg-white/10 border border-white/20 rounded text-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-white/50"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase font-bold opacity-70">Amount (MOVE)</label>
+              <input 
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.5"
+                className="w-full mt-1 px-3 py-1.5 bg-white/10 border border-white/20 rounded text-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-white/50"
+              />
+            </div>
+            <button 
+              onClick={handleSend}
+              disabled={sending}
+              className="w-full py-2 bg-white text-blue-600 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              {sending ? 'Sending...' : 'Confirm Transfer'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="p-4">
@@ -173,10 +304,11 @@ export const MovementWalletActivity: React.FC = () => {
                 </div>
                 <div className="text-right">
                   <p className={`font-bold ${tx.txType === 'CREDIT' ? 'text-green-600' : 'text-gray-800'}`}>
-                    {tx.txType === 'CREDIT' ? '+' : '-'}{(parseFloat(tx.amount) / 1e8).toFixed(1)} MOVE
+                    {tx.txType === 'CREDIT' ? '+' : '-'}
+                    {(parseFloat(tx.amount) / (tx.tokenSymbol === 'USDC.e' ? 1e6 : 1e8)).toFixed(tx.tokenSymbol === 'USDC.e' ? 2 : 1)} {tx.tokenSymbol === 'USDC.e' ? 'USDC' : 'MOVE'}
                   </p>
                   <a 
-                    href={`https://explorer.movementnetwork.xyz/txn/${tx.txHash}?network=testnet`} 
+                    href={`https://explorer.movementnetwork.xyz/txn/${tx.txHash}?network=bardock+testnet`} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="text-[9px] text-blue-500 hover:underline font-mono"

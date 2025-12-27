@@ -37,7 +37,7 @@ export const MyUserListings: React.FC = () => {
       // Response type: { pricing: PaymentPricing; currency: string }
       // PaymentPricing has: { listing: number; adBoosts: {...} }
       if (data?.pricing?.listing !== undefined) {
-        setListingPrice(data.pricing.listing);
+      setListingPrice(data.pricing.listing);
       }
       // Keep default price if fetch fails or structure is unexpected
     } catch (error) {

@@ -45,7 +45,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
       const data = await paymentService.getPricing();
       // Safe access to pricing data
       if (data?.pricing?.listing !== undefined) {
-        setPricing(data.pricing.listing);
+      setPricing(data.pricing.listing);
       }
     } catch (error) {
       console.error('Failed to load pricing:', error);
@@ -305,7 +305,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-600">Listing Fee:</span>
             <span className="text-2xl font-bold text-gray-800">
-              {paymentMethod === 'movement' ? '1 MOVE' : `$${pricing} USDC`}
+              {paymentMethod === 'movement' ? '1.0 USDC' : `$${pricing} USDC`}
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-2">
@@ -326,13 +326,13 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                     onChange={(e) => setPaymentMethod(e.target.value as 'movement' | 'evm' | 'circle')}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
-                    <option value="movement">Movement (1 MOVE) - Recommended</option>
+                    <option value="movement">Movement (1.0 USDC) - Recommended</option>
                     <option value="evm">EVM Chains (USDC)</option>
                     <option value="circle">Circle Wallet (USDC)</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     {paymentMethod === 'movement' 
-                      ? 'Pay with Movement test tokens using your Privy Movement wallet.'
+                      ? 'Pay with official USDC on Movement using your Privy wallet.'
                       : paymentMethod === 'evm'
                       ? 'Pay with USDC on EVM chains (Base, Polygon, etc.)'
                       : 'Pay with USDC from your Circle wallet.'}
@@ -374,7 +374,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                   Processing...
                 </div>
               ) : (
-                paymentMethod === 'movement' ? 'Pay 1 MOVE' : `Pay $${pricing} USDC`
+                paymentMethod === 'movement' ? 'Pay 1.0 USDC' : `Pay $${pricing} USDC`
               )}
             </button>
 
@@ -413,7 +413,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
             </button>
 
             <p className="text-xs text-gray-500 text-center">
-              ⏱️ Payments typically confirm within 5-15 minutes
+              ⏱️ Payments confirm instantly on Movement L1
             </p>
           </div>
         )}
@@ -422,7 +422,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           <p className="text-xs text-gray-500">
             <strong>Note:</strong> {
               paymentMethod === 'movement' 
-                ? 'Ensure you have at least 1 MOVE in your Movement wallet. Payment will be made from your Privy Movement wallet.'
+                ? 'Ensure you have at least 1.0 USDC in your Movement wallet. You will also need a tiny amount of MOVE for gas.'
                 : paymentMethod === 'evm'
                 ? `Ensure you have at least ${pricing} USDC in your ${selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} wallet. Payment will be made from your Privy ${selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} wallet.`
                 : `Ensure you have at least ${pricing} USDC in your wallet. The payment will be deducted from your Circle wallet.`

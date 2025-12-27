@@ -142,13 +142,10 @@ export async function sendMovementTransaction(
     const senderAddress = AccountAddress.from(walletAddress);
 
     // Build the transaction
-    // Convert arguments - amount should be a string (native units)
-    const functionArguments = transactionData.arguments.map((arg, index) => {
-      // First argument is recipient address (string), second is amount (string/number)
-      if (index === 1 && typeof arg === 'string' && /^\d+$/.test(arg)) {
-        // Amount in native units - keep as string for BigInt compatibility
-        return arg;
-      }
+    // Convert arguments - ensure amounts are strings for the SDK
+    const functionArguments = transactionData.arguments.map((arg) => {
+      // If it's a string that looks like a large number, keep it as a string
+      // The Aptos SDK will handle conversion to u64 internally
       return arg;
     });
 
@@ -160,10 +157,10 @@ export async function sendMovementTransaction(
     // Type assertion: transactionData.function is validated to have the correct format
     const functionName = transactionData.function as `${string}::${string}::${string}`;
 
-    // STRATEGIC FIX: Automatically use aptos_account::transfer_coins for MOVE transfers
-    // This handles uninitialized recipient accounts (ECOIN_STORE_NOT_PUBLISHED)
+    // STRATEGIC FIX: Automatically handle transfer function overrides
     let finalFunctionName = functionName;
     if (functionName === "0x1::coin::transfer") {
+      // For legacy MOVE transfers, use the safer transfer_coins
       finalFunctionName = "0x1::aptos_account::transfer_coins";
     }
 
