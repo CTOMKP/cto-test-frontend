@@ -267,9 +267,33 @@ export const PrivyProfilePage: React.FC = () => {
     );
   }
 
-  // Combine Privy wallets with backend wallets
+  // Combine Privy wallets with backend wallets and de-duplicate by address
   const privyWallets = user?.linkedAccounts?.filter((account: any) => account.type === 'wallet') || [];
-  const displayWallets = allWallets.length > 0 ? allWallets : privyWallets;
+  
+  // Create a map to de-duplicate wallets by address (case-insensitive)
+  const walletMap = new Map();
+  
+  // Add privy wallets first (they are usually the source of truth for the frontend)
+  privyWallets.forEach((w: any) => {
+    if (w.address) {
+      walletMap.set(w.address.toLowerCase(), {
+        ...w,
+        source: 'privy'
+      });
+    }
+  });
+  
+  // Add backend wallets, but don't overwrite privy ones (to keep primary status/labels)
+  allWallets.forEach((w: any) => {
+    if (w.address && !walletMap.has(w.address.toLowerCase())) {
+      walletMap.set(w.address.toLowerCase(), {
+        ...w,
+        source: 'backend'
+      });
+    }
+  });
+  
+  const displayWallets = Array.from(walletMap.values());
   const email = user?.email?.address || user?.wallet?.address || 'Privy User';
 
   return (
@@ -392,11 +416,11 @@ export const PrivyProfilePage: React.FC = () => {
                           {(wallet.chainType === 'aptos' || wallet.blockchain === 'APTOS' || wallet.blockchain === 'MOVEMENT') && '🅰️'}
                         </span>
                         <span className="font-semibold text-gray-900 capitalize">
-                          {wallet.blockchain === 'MOVEMENT' 
+                          {wallet.blockchain === 'MOVEMENT' || wallet.chainType === 'aptos'
                             ? 'Movement Wallet' 
                             : (wallet.chainType || wallet.blockchain || 'Unknown').toLowerCase() + ' Wallet'}
                         </span>
-                        {index === 0 && (
+                        {(index === 0 || wallet.isPrimary) && (
                           <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
                             Primary
                           </span>

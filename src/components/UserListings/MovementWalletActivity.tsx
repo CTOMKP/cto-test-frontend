@@ -53,9 +53,22 @@ export const MovementWalletActivity: React.FC = () => {
         // Handle nested response from TransformInterceptor
         const walletsData = data?.data?.wallets || data?.wallets || [];
         
-        const moveWallet = walletsData.find((w: any) => 
-          w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
-        );
+        // STRATEGIC FIX: Prioritize the wallet that matches the current Privy account
+        const privyMoveWallet = getMovementWallet(privyUser);
+        let moveWallet = null;
+        
+        if (privyMoveWallet) {
+          moveWallet = walletsData.find((w: any) => 
+            w.address.toLowerCase() === privyMoveWallet.address.toLowerCase()
+          );
+        }
+        
+        // Fallback to any Movement wallet if no match found
+        if (!moveWallet) {
+          moveWallet = walletsData.find((w: any) => 
+            w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
+          );
+        }
 
         if (moveWallet) {
           console.log('✅ Found Movement wallet directly:', moveWallet.id);
@@ -186,7 +199,7 @@ export const MovementWalletActivity: React.FC = () => {
         txData = {
           type: 'entry_function_payload',
           function: '0x1::primary_fungible_store::transfer',
-          type_arguments: ['0x1::fungible_asset::Metadata'],
+          type_arguments: [], // STRATEGIC FIX: type_arguments should be empty for this function
           arguments: [USDC_METADATA, recipient, usdcAmount],
         };
       }
@@ -393,7 +406,14 @@ export const MovementWalletActivity: React.FC = () => {
                 <div className="text-right">
                   <p className={`font-bold ${tx.txType === 'CREDIT' ? 'text-green-600' : 'text-gray-800'}`}>
                     {tx.txType === 'CREDIT' ? '+' : '-'}
-                    {(parseFloat(tx.amount) / (tx.tokenSymbol === 'USDC.e' ? 1e6 : 1e8)).toFixed(tx.tokenSymbol === 'USDC.e' ? 2 : 1)} {tx.tokenSymbol === 'USDC.e' ? 'USDC' : 'MOVE'}
+                    {(() => {
+                      const isUSDC = tx.tokenSymbol?.toLowerCase().includes('usdc');
+                      const divisor = isUSDC ? 1000000 : 100000000;
+                      const decimals = isUSDC ? 2 : 2;
+                      const amount = parseFloat(tx.amount) / divisor;
+                      const symbol = isUSDC ? 'USDC' : 'MOVE';
+                      return `${amount.toFixed(decimals)} ${symbol}`;
+                    })()}
                   </p>
                   <a 
                     href={`https://explorer.movementnetwork.xyz/txn/${tx.txHash}?network=bardock+testnet`} 
