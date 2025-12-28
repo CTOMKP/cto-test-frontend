@@ -207,6 +207,11 @@ const App: React.FC = () => {
             logo: '/logo.png',
             showWalletLoginFirst: true,
           },
+          embeddedWallets: {
+            ethereum: {
+              createOnLogin: 'users-without-wallets',
+            },
+          },
         }}
       >
         <Router>

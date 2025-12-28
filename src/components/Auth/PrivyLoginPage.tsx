@@ -8,14 +8,17 @@ import { ROUTES } from '../../utils/constants';
 import { createMovementWallet, getMovementWallet } from '../../lib/movement-wallet';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 
+// Module-level Set to track processing user IDs across ALL hook instances
+const processingUserIds = new Set<string>();
+
 export const PrivyLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, authenticated, user, ready, getAccessToken, logout } = usePrivy();
   const { createWallet } = useCreateWallet();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
-  const [hasStartedSync, setHasStartedSync] = useState(false);
   const [syncProgress, setSyncProgress] = useState('');
+  const syncAttemptedRef = useRef<string | null>(null);
 
   // Use a ref to always have the latest user object in async loops
   const userRef = useRef(user);
@@ -23,326 +26,154 @@ export const PrivyLoginPage: React.FC = () => {
     userRef.current = user;
   }, [user]);
 
-  // Sync with backend after Privy authentication and Movement wallet creation
+  // Sync with backend after Privy authentication
   useEffect(() => {
-    if (authenticated && user && !isSyncing && !isCreatingMovementWallet && !hasStartedSync) {
-      setHasStartedSync(true);
+    if (authenticated && user && !isSyncing && !isCreatingMovementWallet) {
+      const userId = user.id;
+      
+      // Prevent multiple parallel runs
+      if (processingUserIds.has(userId)) return;
+      
+      // If already synced this session, skip
+      if (syncAttemptedRef.current === userId) return;
+
+      const token = localStorage.getItem('cto_auth_token');
+      const storedId = localStorage.getItem('cto_user_id');
+      if (token && storedId === userId) {
+        syncAttemptedRef.current = userId;
+        return;
+      }
+
+      processingUserIds.add(userId);
+      syncAttemptedRef.current = userId;
       handleMovementWalletAndSync();
     }
-  }, [authenticated, user, isSyncing, isCreatingMovementWallet, hasStartedSync]);
+  }, [authenticated, user?.id]);
 
   // Wait for Privy to fully load linkedAccounts (with retries)
-  const waitForPrivyAccounts = async (maxRetries = 15, delayMs = 1000): Promise<boolean> => {
-    console.log('⏳ Waiting for Privy accounts to settle...');
+  const waitForPrivyAccounts = async (maxRetries = 10, delayMs = 1000): Promise<boolean> => {
     for (let i = 0; i < maxRetries; i++) {
       const currentUser = userRef.current;
-      // Check if linkedAccounts is loaded and has items
       if (currentUser?.linkedAccounts && currentUser.linkedAccounts.length > 0) {
-        // Also check if we have any wallet (at least Ethereum is usually there)
-        const hasAnyWallet = currentUser.linkedAccounts.some(acc => acc.type === 'wallet');
-        if (hasAnyWallet) {
-          console.log(`✅ Privy wallets loaded after ${i + 1} attempt(s)`);
-        return true;
-        }
-      }
-      
-      console.log(`⏳ Waiting for Privy wallets to load... (attempt ${i + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-    
-    console.warn('⚠️ Privy accounts not fully loaded, proceeding anyway...');
-    return false;
-  };
-
-  // Wait specifically for Movement wallet to appear in user object
-  const waitForMovementWallet = async (maxRetries = 15, delayMs = 1000): Promise<boolean> => {
-    console.log('⏳ Waiting for Movement wallet to appear in Privy user object...');
-    for (let i = 0; i < maxRetries; i++) {
-      const wallet = getMovementWallet(userRef.current);
-      if (wallet) {
-        console.log(`✅ Movement wallet appeared after ${i + 1} attempt(s):`, wallet.address);
         return true;
       }
-      
-      console.log(`⏳ Still waiting for Movement wallet... (attempt ${i + 1}/${maxRetries})`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
     return false;
   };
 
-  // Handle Movement wallet creation and backend sync
+  const waitForMovementWallet = async (maxRetries = 10, delayMs = 1000): Promise<boolean> => {
+    for (let i = 0; i < maxRetries; i++) {
+      const wallet = getMovementWallet(userRef.current);
+      if (wallet) return true;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return false;
+  };
+
+  // Improved sync with fresh tokens and error handling (Matching main frontend logic)
+  const syncWithBackend = async (isInitial = false) => {
+    setIsSyncing(true);
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🔄 Sync attempt ${attempt}...`);
+        const privyToken = await getAccessToken();
+        if (!privyToken) throw new Error('No Privy token');
+
+        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
+        const response = await axios.post(
+          `${backendUrl}/api/v1/auth/privy/sync`,
+          { privyToken },
+          { 
+            headers: { 'Content-Type': 'application/json' }, 
+            timeout: 30000,
+            // Disable withCredentials for cross-origin if not using cookies
+            withCredentials: false 
+          }
+        );
+
+        const data = response.data.data || response.data;
+        if (data.token) localStorage.setItem('cto_auth_token', data.token);
+        if (data.user?.id) localStorage.setItem('cto_user_id', data.user.id.toString());
+        if (data.user?.email) localStorage.setItem('cto_user_email', data.user.email);
+        if (data.wallets) localStorage.setItem('cto_user_wallets', JSON.stringify(data.wallets));
+
+        console.log('✅ Sync success');
+        
+        // If we found wallets, or if it's the final attempt, stop
+        if ((data.wallets && data.wallets.length > 0) || attempt === 3) {
+          setIsSyncing(false);
+          return data;
+        }
+        
+        console.warn('⚠️ No wallets found, retrying...');
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (err: any) {
+        lastError = err;
+        console.error(`❌ Attempt ${attempt} failed:`, err.message);
+        
+        // If it's a CORS error, we might need to tell the user
+        if (err.message?.includes('Network Error') || err.code === 'ERR_NETWORK') {
+          console.error('Potential CORS issue or Backend down');
+        }
+        
+        if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    setIsSyncing(false);
+    return null;
+  };
+
   const handleMovementWalletAndSync = async () => {
+    const userId = userRef.current?.id;
     try {
-      setSyncProgress('Loading Privy data...');
-      // Step 1: Wait for Privy to fully load linkedAccounts
+      setSyncProgress('Loading account...');
       await waitForPrivyAccounts();
       
-      // Step 2: First sync with backend to check if user already exists and has wallets
-      setSyncProgress('Checking existing account...');
-      console.log('🔄 Step 1: Syncing with backend to check existing wallets...');
-      let backendSyncResult;
-      try {
-        backendSyncResult = await syncWithBackend(true); // Pass flag to skip navigation
-      } catch (syncError) {
-        console.error('❌ Backend sync failed:', syncError);
-        // If sync fails, we'll still try to check Privy wallets
-        backendSyncResult = null;
-      }
-
-      // Step 3: Check if user has Movement wallet in backend
-      const backendHasMovementWallet = backendSyncResult?.wallets?.some(
-        (w: any) => w.blockchain === 'MOVEMENT'
+      // STEP 1: Sync initial wallets (Ethereum/Social)
+      setSyncProgress('Syncing with server...');
+      const syncResult = await syncWithBackend(true);
+      
+      // STEP 2: Check for Movement wallet
+      const wallets = syncResult?.wallets || [];
+      const hasMovement = wallets.some((w: any) => 
+        w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS' || w.chainType === 'aptos'
       );
 
-      // Step 4: Check if user has Movement wallet in Privy
-      let movementWallet = getMovementWallet(userRef.current);
-      const privyHasMovementWallet = !!movementWallet;
-
-      console.log('📊 Wallet Status Check:');
-      console.log(`  - Backend has Movement wallet: ${backendHasMovementWallet}`);
-      console.log(`  - Privy has Movement wallet: ${privyHasMovementWallet}`);
-
-      // Step 5: Only create wallet if BOTH backend and Privy don't have it
-      if (!backendHasMovementWallet && !privyHasMovementWallet) {
+      if (!hasMovement) {
+        console.log('🔄 Creating Movement wallet...');
         setIsCreatingMovementWallet(true);
         setSyncProgress('Creating Movement wallet...');
-        console.log('🔄 Creating Movement wallet (new user)...');
         
         try {
-          // Create Movement wallet using Privy with shorter timeout
-          const walletCreationPromise = createMovementWallet(userRef.current, createWallet);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Wallet creation timeout')), 30000)
-          );
-          
-          const newWallet = await Promise.race([walletCreationPromise, timeoutPromise]);
-          console.log('✅ Movement wallet created:', newWallet);
-          
-          // CRITICAL: Wait for the new wallet to appear in the local user object
-          // before we attempt to sync with backend. If we sync too early,
-          // the backend might not see the new wallet from Privy API yet.
-          setSyncProgress('Verifying wallet...');
+          await createMovementWallet(userRef.current, createWallet);
           await waitForMovementWallet();
           
-          toast.success('Movement wallet ready!');
-        } catch (error: any) {
-          console.error('❌ Wallet creation error:', error);
+          setSyncProgress('Finalizing setup...');
+          console.log('⏳ Waiting for Privy indexing (2s)...');
+          await new Promise(r => setTimeout(r, 2000));
           
-          // Check if wallet was actually created despite the error/timeout
-          const checkWallet = getMovementWallet(userRef.current);
-          if (checkWallet) {
-            console.log('✅ Wallet exists despite error, proceeding...');
-            toast.success('Wallet ready!');
-          } else {
-            console.warn('⚠️ Wallet creation error, but continuing to sync...');
-            toast('Continuing setup...', { icon: '⏳', duration: 3000 });
-          }
+          // STEP 3: Final Sync
+          await syncWithBackend(false);
+        } catch (err) {
+          console.error('❌ Wallet creation flow error:', err);
         } finally {
           setIsCreatingMovementWallet(false);
         }
-
-        // Re-sync with backend after wallet creation to update backend
-        setSyncProgress('Syncing with servers...');
-        console.log('🔄 Re-syncing with backend after wallet creation...');
-        try {
-          await syncWithBackend();
-        } catch (syncError) {
-          console.error('❌ Backend re-sync failed:', syncError);
-          // Navigate anyway
-          setTimeout(() => {
-            navigate(ROUTES.profile);
-          }, 1000);
-        }
-      } else {
-        // User already has wallet - just sync and navigate
-        setSyncProgress('Synchronizing account...');
-        console.log('✅ User already has Movement wallet, skipping creation');
-        
-        // Final sync to ensure backend is up to date (skip if we already synced)
-        if (!backendSyncResult) {
-          try {
-            await syncWithBackend();
-          } catch (syncError) {
-            console.error('❌ Final backend sync failed:', syncError);
-            // Navigate anyway
-            setTimeout(() => {
-              navigate(ROUTES.profile);
-            }, 1000);
-          }
-        } else {
-          // Already synced, just navigate
-          setSyncProgress('Redirecting...');
-          setTimeout(() => {
-            navigate(ROUTES.profile);
-          }, 100);
-        }
       }
+      
+      console.log('🏁 Flow complete, navigating to profile');
+      navigate(ROUTES.profile);
     } catch (error) {
-      console.error('❌ Error in Movement wallet setup:', error);
+      console.error('❌ Authentication flow failed:', error);
+      navigate(ROUTES.profile);
+    } finally {
+      if (userId) processingUserIds.delete(userId);
+      setIsSyncing(false);
       setIsCreatingMovementWallet(false);
-      setIsSyncing(false);
-      // Try to navigate anyway
-      setTimeout(() => {
-        navigate(ROUTES.profile);
-      }, 1000);
-    }
-  };
-
-  const syncWithBackend = async (skipNavigation = false) => {
-    setIsSyncing(true);
-    try {
-      console.log('🔄 Syncing Privy user with backend...', user);
-      console.log('📧 User email:', user?.email);
-      console.log('📱 Linked accounts:', user?.linkedAccounts);
-
-      // Get fresh Privy access token (tokens expire quickly) with retry
-      console.log('🔄 Getting fresh Privy token...');
-      let privyToken;
-      let tokenRetries = 0;
-      const maxTokenRetries = 3;
-      
-      while (tokenRetries < maxTokenRetries) {
-        try {
-          privyToken = await getAccessToken();
-          if (privyToken) break;
-        } catch (error) {
-          console.log(`❌ Token attempt ${tokenRetries + 1} failed:`, error);
-          if (tokenRetries === maxTokenRetries - 1) throw error;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          tokenRetries++;
-        }
-      }
-      
-      if (!privyToken) {
-        throw new Error('No Privy token available');
-      }
-
-      console.log('✅ Got fresh Privy token:', privyToken.substring(0, 50) + '...');
-      console.log('🔗 Calling backend sync...');
-
-      // Call our backend to sync user and wallets with retry logic
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
-      
-      let response;
-      let retryCount = 0;
-      const maxRetries = 2; // Reduced retries since backend now handles retries
-      
-      while (retryCount <= maxRetries) {
-        try {
-          // Get a fresh token for each retry
-          const freshToken = retryCount > 0 ? await getAccessToken() : privyToken;
-          
-          if (!freshToken) {
-            throw new Error('No fresh token available');
-          }
-          
-          console.log(`🔄 Attempt ${retryCount + 1}: Using token: ${freshToken.substring(0, 20)}...`);
-          
-          response = await axios.post(
-            `${backendUrl}/api/v1/auth/privy/sync`,
-            { privyToken: freshToken },
-            { 
-              headers: { 'Content-Type': 'application/json' },
-              timeout: 30000 // 30 second timeout
-            }
-          );
-          
-          // If we get here, the request succeeded
-          break;
-        } catch (error: any) {
-          console.log(`❌ Attempt ${retryCount + 1} failed:`, error.message);
-          
-          if (retryCount === maxRetries) {
-            throw error; // Re-throw the last error
-          }
-          
-          // Wait a bit before retrying (longer delay since backend handles main retries)
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          retryCount++;
-        }
-      }
-
-      if (!response) {
-        throw new Error('No response received from backend');
-      }
-
-      console.log('✅ Backend sync successful:', response.data);
-
-      // Unwrap response from TransformInterceptor: { data: {...}, statusCode, timestamp }
-      const responseData = response.data.data || response.data;
-      
-      if (!responseData || !responseData.user) {
-        throw new Error('Invalid response structure from backend');
-      }
-
-      const userData = responseData.user;
-      const token = responseData.token;
-      const wallets = responseData.wallets || [];
-
-      // Store our JWT token and user info
-      if (token) {
-        localStorage.setItem('cto_auth_token', token);
-      }
-      
-      // Handle email - may be undefined for Google sign-in users
-      const userEmail = userData.email || userData.walletAddress || 'User';
-      if (userData.email) {
-        localStorage.setItem('cto_user_email', userData.email);
-      } else if (userData.walletAddress) {
-        // Fallback: use wallet address if no email
-        localStorage.setItem('cto_user_email', `${userData.walletAddress}@wallet.privy`);
-      }
-      
-      if (userData.id) {
-        localStorage.setItem('cto_user_id', userData.id.toString());
-      }
-      
-      if (userData.walletAddress) {
-        localStorage.setItem('cto_wallet_address', userData.walletAddress);
-      }
-      
-      // Store avatarUrl if available (from database) - transform to CloudFront URL
-      if (userData.avatarUrl) {
-        const cloudfrontUrl = getCloudFrontUrl(userData.avatarUrl);
-        console.log('✅ Storing avatarUrl from backend sync (CloudFront):', cloudfrontUrl);
-        localStorage.setItem('cto_user_avatar_url', cloudfrontUrl);
-        localStorage.setItem('profile_avatar_url', cloudfrontUrl);
-      } else {
-        console.log('⚠️ No avatarUrl in sync response');
-      }
-
-      // Store ALL wallets (including Aptos) for profile display
-      if (wallets && wallets.length > 0) {
-        localStorage.setItem('cto_user_wallets', JSON.stringify(wallets));
-        console.log('💼 Saved wallets to localStorage:', wallets);
-      }
-
-      toast.success(`✅ Welcome, ${userEmail}!`);
-      
-      // Return sync result for wallet checking logic
-      if (skipNavigation) {
-        setIsSyncing(false);
-        return responseData;
-      }
-      
-      // Force close Privy modal and navigate immediately
-      // Use setTimeout to ensure navigation happens even if Privy is still processing
-      setTimeout(() => {
-        navigate(ROUTES.profile);
-        // Force reload if navigation doesn't work (fallback)
-        setTimeout(() => {
-          if (window.location.pathname.includes('/login')) {
-            window.location.href = ROUTES.profile;
-          }
-        }, 500);
-      }, 100);
-
-      return response.data;
-
-    } catch (error: any) {
-      console.error('❌ Backend sync failed:', error);
-      toast.error(`Sync failed: ${error.response?.data?.message || error.message}`);
-      setIsSyncing(false);
     }
   };
 
