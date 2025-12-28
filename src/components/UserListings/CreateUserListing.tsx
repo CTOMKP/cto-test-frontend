@@ -355,7 +355,7 @@ export const CreateUserListing: React.FC = () => {
       setError(errorMsg);
       
       // If error is about payment, show helpful message and redirect
-      if (errorMsg.includes('Payment required') || errorMsg.includes('pay 50 USDC')) {
+      if (errorMsg.includes('Payment required') || errorMsg.includes('pay 1.0 USDC')) {
         toast('💳 Payment Required! Redirecting to payment page...', { 
           icon: '💰',
           duration: 3000,
@@ -666,7 +666,7 @@ export const CreateUserListing: React.FC = () => {
           {/* Payment Info Notice */}
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mt-4">
             <p className="text-sm text-blue-700">
-              <strong>💡 Next Step:</strong> After clicking submit, you'll be redirected to pay 50 USDC to publish your listing.
+              <strong>💡 Next Step:</strong> After clicking submit, you'll be redirected to pay 1.0 USDC to publish your listing.
             </p>
           </div>
         </div>

@@ -193,7 +193,7 @@ export const MyUserListings: React.FC = () => {
                       }}
                       className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all"
                     >
-                      💳 Pay 1 MOVE to Publish
+                      💳 Pay 1 USDC to Publish
                     </button>
                     <button
                       onClick={(e) => {
