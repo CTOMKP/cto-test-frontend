@@ -199,7 +199,7 @@ export const MovementWalletActivity: React.FC = () => {
         txData = {
           type: 'entry_function_payload',
           function: '0x1::primary_fungible_store::transfer',
-          type_arguments: [], // STRATEGIC FIX: type_arguments should be empty for this function
+          type_arguments: ['0x1::fungible_asset::Metadata'], // RESTORED: Required by Movement Bardock
           arguments: [USDC_METADATA, recipient, usdcAmount],
         };
       }
