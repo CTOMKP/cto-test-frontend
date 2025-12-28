@@ -22,21 +22,26 @@ export const MovementWalletActivity: React.FC = () => {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [sending, setSending] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<'MOVE' | 'USDC'>('MOVE');
+
+  // USDC Metadata address for Movement Bardock
+  const USDC_METADATA = '0xb89077cfd2a82a0c1450534d49cfd5f2707643155273069bc23a912bcfefdee7';
 
   // STRATEGIC FIX: Find the wallet ID by directly calling the wallet API
   // This bypasses any issues with the user profile response
+  const [isAutoRecovering, setIsAutoRecovering] = useState(false);
+
   useEffect(() => {
     const findAndSetWallet = async () => {
       const userAny = dbUser as any;
       const userId = userAny?.id || localStorage.getItem('cto_user_id');
       
+      // GUARD: Don't run if already recovering or if we already have an active wallet
+      if (!userId || activeWalletId || isAutoRecovering) return;
+
       console.log('🔍 MovementWalletActivity: Fetching wallet directly...', { userId });
 
-      if (!userId) return;
-
       try {
-        // We know the user has a Movement wallet in the DB. 
-        // Let's just ask the backend for ALL wallets for this user.
         const token = localStorage.getItem('cto_auth_token');
         const API_BASE = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
         
@@ -44,9 +49,11 @@ export const MovementWalletActivity: React.FC = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();
-        const wallets = data?.data?.wallets || data?.wallets || [];
         
-        const moveWallet = wallets.find((w: any) => 
+        // Handle nested response from TransformInterceptor
+        const walletsData = data?.data?.wallets || data?.wallets || [];
+        
+        const moveWallet = walletsData.find((w: any) => 
           w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
         );
 
@@ -55,15 +62,50 @@ export const MovementWalletActivity: React.FC = () => {
           setActiveWalletId(moveWallet.id);
           localStorage.setItem('cto_wallet_id', moveWallet.id);
         } else {
-          console.warn('⚠️ No Movement wallet found in /wallets API');
+          console.warn('⚠️ No Movement wallet found. Attempting AUTO-RECOVERY sync...');
+          setIsAutoRecovering(true);
+          
+          const syncResponse = await fetch(`${API_BASE}/api/v1/auth/privy/sync-wallets`, {
+            method: 'POST',
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          const syncData = await syncResponse.json();
+          console.log('🔄 Auto-Recovery Sync Result:', syncData);
+          
+          // Re-fetch once after sync
+          const retryResponse = await fetch(`${API_BASE}/api/v1/auth/privy/wallets`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const retryData = await retryResponse.json();
+          const retryWallets = retryData?.data?.wallets || retryData?.wallets || [];
+          
+          const recoveredWallet = retryWallets.find((w: any) => 
+            w.blockchain === 'MOVEMENT' || w.blockchain === 'APTOS'
+          );
+          
+          if (recoveredWallet) {
+            console.log('✅ Auto-Recovery SUCCESS:', recoveredWallet.id);
+            setActiveWalletId(recoveredWallet.id);
+            localStorage.setItem('cto_wallet_id', recoveredWallet.id);
+          } else {
+            console.warn('❌ Auto-Recovery failed to find Movement wallet.');
+          }
+          // Reset recovery state so it can try again later if needed, 
+          // but dependencies should prevent loop.
+          setIsAutoRecovering(false);
         }
       } catch (err) {
         console.error('❌ Direct wallet fetch failed', err);
+        setIsAutoRecovering(false);
       }
     };
 
     findAndSetWallet();
-  }, [dbUser]);
+  }, [dbUser, activeWalletId, isAutoRecovering]);
 
   const loadData = useCallback(async (showLoading = true) => {
     if (!activeWalletId) return;
@@ -124,18 +166,30 @@ export const MovementWalletActivity: React.FC = () => {
     }
 
     setSending(true);
-    const toastId = toast.loading('Sending MOVE...');
+    const toastId = toast.loading(`Sending ${selectedToken}...`);
 
     try {
-      // Basic MOVE transfer (8 decimals)
-      const moveAmount = Math.floor(parseFloat(amount) * 100000000).toString();
+      let txData;
       
-      const txData = {
-        type: 'entry_function_payload',
-        function: '0x1::aptos_account::transfer_coins',
-        type_arguments: ['0x1::aptos_coin::AptosCoin'],
-        arguments: [recipient, moveAmount],
-      };
+      if (selectedToken === 'MOVE') {
+        // Basic MOVE transfer (8 decimals)
+        const moveAmount = Math.floor(parseFloat(amount) * 100000000).toString();
+        txData = {
+          type: 'entry_function_payload',
+          function: '0x1::aptos_account::transfer_coins',
+          type_arguments: ['0x1::aptos_coin::AptosCoin'],
+          arguments: [recipient, moveAmount],
+        };
+      } else {
+        // USDC (Fungible Asset) transfer (6 decimals)
+        const usdcAmount = Math.floor(parseFloat(amount) * 1000000).toString();
+        txData = {
+          type: 'entry_function_payload',
+          function: '0x1::primary_fungible_store::transfer',
+          type_arguments: ['0x1::fungible_asset::Metadata'],
+          arguments: [USDC_METADATA, recipient, usdcAmount],
+        };
+      }
 
       const hash = await sendMovementTransaction(
         txData,
@@ -144,7 +198,7 @@ export const MovementWalletActivity: React.FC = () => {
         signRawHash as any
       );
 
-      toast.success('Transfer successful!', { id: toastId });
+      toast.success(`${selectedToken} transfer successful!`, { id: toastId });
       setShowSendForm(false);
       setRecipient('');
       setAmount('');
@@ -186,23 +240,32 @@ export const MovementWalletActivity: React.FC = () => {
   const usdcBalance = balances.find(b => b.tokenSymbol === 'USDC.e');
   const moveBalance = balances.find(b => b.tokenSymbol === 'MOVE');
   
-  const displayBalance = usdcBalance 
+  const usdcValue = usdcBalance 
     ? (parseFloat(usdcBalance.balance) / Math.pow(10, usdcBalance.decimals)).toFixed(2)
-    : moveBalance 
-      ? (parseFloat(moveBalance.balance) / Math.pow(10, moveBalance.decimals)).toFixed(2)
-      : '0.00';
-
-  const displaySymbol = usdcBalance ? 'USDC' : 'MOVE';
+    : '0.00';
+  
+  const moveValue = moveBalance 
+    ? (parseFloat(moveBalance.balance) / Math.pow(10, moveBalance.decimals)).toFixed(2)
+    : '0.00';
 
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
       <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs opacity-80 uppercase tracking-wider font-semibold">Movement Balance</p>
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-bold">{displayBalance}</h2>
-              <span className="text-sm font-medium opacity-90">{displaySymbol}</span>
+        <div className="flex items-start justify-between">
+          <div className="space-y-3">
+            <div>
+              <p className="text-[10px] opacity-80 uppercase tracking-wider font-semibold">Native Token</p>
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-2xl font-bold">{moveValue}</h2>
+                <span className="text-sm font-medium opacity-90">MOVE</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] opacity-80 uppercase tracking-wider font-semibold">Stablecoin</p>
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-2xl font-bold">{usdcValue}</h2>
+                <span className="text-sm font-medium opacity-90">USDC</span>
+              </div>
             </div>
           </div>
           <button 
@@ -217,7 +280,7 @@ export const MovementWalletActivity: React.FC = () => {
           </button>
         </div>
         <p className="mt-2 text-[10px] opacity-70 font-mono break-all">
-          Wallet: {moveBalance?.walletId || activeWalletId}
+          Wallet: {getMovementWallet(privyUser)?.address || activeWalletId}
         </p>
         
         <div className="mt-4 flex gap-2">
@@ -228,12 +291,37 @@ export const MovementWalletActivity: React.FC = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
-            Send MOVE
+            Send Assets
           </button>
         </div>
 
         {showSendForm && (
           <div className="mt-4 p-3 bg-black/10 rounded-lg space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div>
+              <label className="text-[10px] uppercase font-bold opacity-70">Token</label>
+              <div className="flex gap-2 mt-1">
+                <button 
+                  onClick={() => setSelectedToken('MOVE')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded border ${
+                    selectedToken === 'MOVE' 
+                      ? 'bg-white text-blue-600 border-white' 
+                      : 'bg-transparent text-white border-white/20 hover:bg-white/5'
+                  }`}
+                >
+                  MOVE
+                </button>
+                <button 
+                  onClick={() => setSelectedToken('USDC')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded border ${
+                    selectedToken === 'USDC' 
+                      ? 'bg-white text-blue-600 border-white' 
+                      : 'bg-transparent text-white border-white/20 hover:bg-white/5'
+                  }`}
+                >
+                  USDC
+                </button>
+              </div>
+            </div>
             <div>
               <label className="text-[10px] uppercase font-bold opacity-70">Recipient Address</label>
               <input 
@@ -245,7 +333,7 @@ export const MovementWalletActivity: React.FC = () => {
               />
             </div>
             <div>
-              <label className="text-[10px] uppercase font-bold opacity-70">Amount (MOVE)</label>
+              <label className="text-[10px] uppercase font-bold opacity-70">Amount ({selectedToken})</label>
               <input 
                 type="number"
                 value={amount}
@@ -259,7 +347,7 @@ export const MovementWalletActivity: React.FC = () => {
               disabled={sending}
               className="w-full py-2 bg-white text-blue-600 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
             >
-              {sending ? 'Sending...' : 'Confirm Transfer'}
+              {sending ? 'Sending...' : `Confirm Transfer`}
             </button>
           </div>
         )}
