@@ -734,7 +734,7 @@ export const ListingsPage: React.FC = () => {
                     return (
                       <tr 
                         key={it.id || it.contractAddress}
-                        className={`${updatedItems.has(it.contractAddress) ? 'border-2 border-green-500 animate-pulse-light' : 'hover:bg-gray-700 border border-transparent'} cursor-pointer transition-all duration-300`}
+                        className={`group ${updatedItems.has(it.contractAddress) ? 'border-2 border-green-500 animate-pulse-light' : 'hover:bg-gray-700 border border-transparent'} cursor-pointer transition-all duration-300`}
                         onClick={() => navigate(`/listing/${it.contractAddress}`)}
                       >
                         <td className="px-3 py-4 whitespace-nowrap">
@@ -827,11 +827,17 @@ export const ListingsPage: React.FC = () => {
                               : '0%'}
                           </span>
                         </td>
-                        {/* Community score - Currently disabled, will be based on user votes */}
+                        {/* Community score - Gauge 0 as requested by user with opacity for "Coming Soon" status */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-700 text-gray-400">
-                            Coming Soon
-                          </span>
+                          <div className="flex flex-col items-end opacity-40 group-hover:opacity-100 transition-opacity" title="Community voting system launching soon">
+                            <div className="flex items-center gap-1">
+                              <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                <div className="w-0 h-full bg-blue-500"></div>
+                              </div>
+                              <span className="text-[10px] text-gray-500">0</span>
+                            </div>
+                            <span className="text-[9px] text-gray-600 uppercase">Coming Soon</span>
+                          </div>
                         </td>
                         {/* Risk score */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
@@ -888,6 +894,7 @@ export const ListingsPage: React.FC = () => {
                               bloom: { bg: 'bg-blue-900', text: 'text-blue-200' },
                               sprout: { bg: 'bg-green-900', text: 'text-green-200' },
                               seed: { bg: 'bg-yellow-900', text: 'text-yellow-200' },
+                              new: { bg: 'bg-teal-900', text: 'text-teal-200' },
                             };
                             
                             const colors = tierColors[tier] || { bg: 'bg-gray-700', text: 'text-gray-300' };

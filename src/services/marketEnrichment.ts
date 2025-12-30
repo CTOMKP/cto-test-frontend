@@ -44,7 +44,8 @@ async function fetchFromDexScreener(contractAddress: string): Promise<Partial<En
 
 async function fetchFromJupiter(contractAddress: string): Promise<Partial<EnrichedMarketData>> {
   try {
-    const url = `https://tokens.jup.ag/token/${contractAddress}`;
+    // Using lite-api.jup.ag as tokens.jup.ag is being phased out
+    const url = `https://lite-api.jup.ag/token/${contractAddress}`;
     const { data } = await axios.get(url, { timeout: 8000 });
     const symbol = data?.symbol ?? undefined;
     const name = data?.name ?? undefined;
