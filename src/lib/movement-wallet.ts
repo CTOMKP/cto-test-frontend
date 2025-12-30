@@ -171,6 +171,9 @@ export async function sendMovementTransaction(
         typeArguments: transactionData.type_arguments,
         functionArguments: functionArguments,
       },
+      options: {
+        maxGasAmount: 50000, // Lowered from default (200,000) to allow transactions with low MOVE balances (e.g., 0.1 MOVE)
+      }
     });
 
     // Generate signing message
