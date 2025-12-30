@@ -771,7 +771,7 @@ export const ListingsPage: React.FC = () => {
                             if (holderCount !== null && holderCount !== undefined && Number.isFinite(Number(holderCount)) && Number(holderCount) > 0) {
                               return Number(holderCount).toLocaleString();
                             }
-                            return <span className="text-gray-500 italic">N/A</span>;
+                            return <span className="text-gray-500">--</span>;
                           })()}
                         </td>
                         {/* Age */}
@@ -827,16 +827,16 @@ export const ListingsPage: React.FC = () => {
                               : '0%'}
                           </span>
                         </td>
-                        {/* Community score - Gauge 0 as requested by user with opacity for "Coming Soon" status */}
+                        {/* Community score - Gauge 0 as requested by user with opacity for "COMING SOON" status */}
                         <td className="px-3 py-4 whitespace-nowrap text-right">
-                          <div className="flex flex-col items-end opacity-40 group-hover:opacity-100 transition-opacity" title="Community voting system launching soon">
+                          <div className="flex flex-col items-end opacity-30 group-hover:opacity-100 transition-opacity" title="Community voting system launching soon">
                             <div className="flex items-center gap-1">
-                              <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                              <div className="w-12 h-1 bg-gray-800 rounded-full overflow-hidden">
                                 <div className="w-0 h-full bg-blue-500"></div>
                               </div>
                               <span className="text-[10px] text-gray-500">0</span>
                             </div>
-                            <span className="text-[9px] text-gray-600 uppercase">Coming Soon</span>
+                            <span className="text-[8px] text-gray-600 uppercase tracking-widest mt-0.5">COMING SOON</span>
                           </div>
                         </td>
                         {/* Risk score */}
