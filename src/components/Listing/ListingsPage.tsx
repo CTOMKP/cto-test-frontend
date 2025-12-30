@@ -739,16 +739,16 @@ export const ListingsPage: React.FC = () => {
                       >
                         <td className="px-3 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-8 w-8 mr-3">
+                            <div className="flex-shrink-0 h-10 w-10 mr-3">
                               <FallbackImage
                                 src={(it?.logoUrl) || (it?.metadata?.market?.logoUrl) || (it?.bannerUrl) || undefined}
                                 alt={(it.symbol || it.name || 'token') + ' logo'}
-                                className="h-8 w-8 rounded-full"
+                                className="h-10 w-10 rounded-full"
                               />
                             </div>
-                            <div>
-                              <div className="text-sm font-medium text-white">{it.symbol || 'Unknown'}</div>
-                              <div className="text-xs text-gray-400 truncate max-w-[120px]">{it.name || it.contractAddress}</div>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-white uppercase">{it.symbol || 'Unknown'}</span>
+                              <span className="text-[10px] text-gray-500 font-medium truncate max-w-[150px]">{it.name || it.contractAddress}</span>
                             </div>
                           </div>
                         </td>
