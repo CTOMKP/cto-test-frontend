@@ -235,14 +235,14 @@ export const MovementWalletActivity: React.FC = () => {
     }
   }, [activeWalletId]);
 
-  // PERIODIC BACKGROUND POLLING (Every 30 seconds)
+  // PERIODIC BACKGROUND POLLING (Every 60 seconds to avoid rate limits)
   useEffect(() => {
     if (!activeWalletId) return;
 
     const intervalId = setInterval(() => {
       console.log('🔄 Performing periodic background wallet sync...');
       handleSync(true);
-    }, 30000); // 30 seconds
+    }, 60000); // 60 seconds
 
     return () => clearInterval(intervalId);
   }, [activeWalletId]);
@@ -261,9 +261,21 @@ export const MovementWalletActivity: React.FC = () => {
     ? (parseFloat(moveBalance.balance) / Math.pow(10, moveBalance.decimals)).toFixed(2)
     : '0.00';
 
+  const isAnyStale = balances.some(b => b.isStale);
+
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
-      <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white">
+      <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white relative">
+        {isAnyStale && (
+          <div className="absolute top-2 right-12 px-2 py-0.5 bg-yellow-400 text-black text-[9px] font-bold rounded flex items-center gap-1 shadow-sm">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-900 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-yellow-900"></span>
+            </span>
+            NETWORK CONGESTED: SHOWING CACHED BALANCE
+          </div>
+        )}
+        
         <div className="flex items-start justify-between">
           <div className="space-y-3">
             <div>
@@ -292,9 +304,16 @@ export const MovementWalletActivity: React.FC = () => {
             </svg>
           </button>
         </div>
-        <p className="mt-2 text-[10px] opacity-70 font-mono break-all">
-          Wallet: {getMovementWallet(privyUser)?.address || activeWalletId}
-        </p>
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-[10px] opacity-70 font-mono break-all max-w-[70%]">
+            {getMovementWallet(privyUser)?.address || activeWalletId}
+          </p>
+          {balances.length > 0 && (
+            <p className="text-[9px] opacity-60 italic">
+              Updated: {new Date(balances[0].lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
+        </div>
         
         <div className="mt-4 flex gap-2">
           <button 

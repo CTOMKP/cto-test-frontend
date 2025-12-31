@@ -18,6 +18,7 @@ export interface WalletBalance {
   balance: string;
   decimals: number;
   lastUpdated: string;
+  isStale?: boolean;
 }
 
 export interface WalletTransaction {
