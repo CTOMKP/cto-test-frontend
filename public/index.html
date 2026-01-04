@@ -16,6 +16,24 @@
     <title>CTO Marketplace - Circle Wallet</title>
   </head>
   <body>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const shareButton = document.querySelector('#share-button');
+        const shareDialog = document.querySelector('#share-dialog');
+        const closeShare = document.querySelector('#close-share');
+
+        // Guard against missing elements (prevents null addEventListener errors)
+        if (!shareButton || !shareDialog) return;
+
+        shareButton.addEventListener('click', () => {
+          shareDialog.showModal?.();
+        });
+
+        closeShare?.addEventListener('click', () => {
+          shareDialog.close?.();
+        });
+      });
+    </script>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
   </body>

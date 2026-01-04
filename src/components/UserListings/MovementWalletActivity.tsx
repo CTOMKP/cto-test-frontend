@@ -6,6 +6,7 @@ import { sendMovementTransaction, getMovementWallet } from '../../lib/movement-w
 import { useSignRawHash } from "@privy-io/react-auth/extended-chains";
 import { usePrivy } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
+import { AccountRecoveryHelper } from '../AccountRecoveryHelper';
 
 export const MovementWalletActivity: React.FC = () => {
   const { user: dbUser } = useAuth();
@@ -177,6 +178,20 @@ export const MovementWalletActivity: React.FC = () => {
       toast.error('No Movement wallet found');
       return;
     }
+    
+        return (
+          <>
+            <AccountRecoveryHelper 
+              show={!moveWallet || (moveBalance?.networkStatus === 'down' || moveBalance?.networkStatus === 'degraded')} 
+            >
+              <div className="bg-white rounded-lg shadow p-6 border border border-gray-200">
+                <p className="text-center text-gray-500 text-sm">
+                  No Movement wallet found in your account. Please check your Profile section to create or sync wallets.
+                </p>
+              </div>
+            </AccountRecoveryHelper>
+          </>
+        );
 
     setSending(true);
     const toastId = toast.loading(`Sending ${selectedToken}...`);
@@ -220,7 +235,32 @@ export const MovementWalletActivity: React.FC = () => {
       setTimeout(() => handleSync(true), 2000);
     } catch (error: any) {
       console.error('Send failed:', error);
-      toast.error('Send failed: ' + (error.message || 'Unknown error'), { id: toastId });
+      
+      // Check for specific error patterns
+      const errorMessage = error.message || '';
+      
+      if (errorMessage.includes('Account not found') || errorMessage.includes('account_not_found')) {
+        toast.error('Network issue: Account not recognized. The wallet may need to be funded with MOVE first to activate on testnet.', { 
+          id: toastId,
+          duration: 8000 // Show longer for this important message
+        });
+        
+        // Show guidance to user
+        setTimeout(() => {
+          toast('💡 Tip: Send a small amount of MOVE to this wallet first, then try your transaction again.', {
+            id: `${toastId}-tip`,
+            duration: 10000,
+            icon: 'ℹ️',
+          });
+        }, 1000);
+      } else       if (errorMessage.includes('Something went wrong') && navigator.onLine) {
+        toast.error('Network connection issue detected. Please check your connection and try again.', {
+          id: toastId,
+          duration: 6000
+        } as any);
+      } else {
+        toast.error('Send failed: ' + errorMessage, { id: toastId });
+      }
     } finally {
       setSending(false);
     }
@@ -434,4 +474,3 @@ export const MovementWalletActivity: React.FC = () => {
     </div>
   );
 };
-

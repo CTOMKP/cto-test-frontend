@@ -18,6 +18,9 @@ export interface WalletBalance {
   balance: string;
   decimals: number;
   lastUpdated: string;
+  networkStatus?: 'healthy' | 'degraded' | 'down';
+  isStale?: boolean;
+  lastSyncTime?: string;
 }
 
 export interface WalletTransaction {

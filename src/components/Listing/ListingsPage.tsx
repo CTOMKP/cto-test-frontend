@@ -960,5 +960,3 @@ export const ListingsPage: React.FC = () => {
     </div>
   );
 };
-
-export default ListingsPage;
