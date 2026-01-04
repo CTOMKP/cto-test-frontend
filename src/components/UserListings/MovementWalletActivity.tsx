@@ -178,20 +178,6 @@ export const MovementWalletActivity: React.FC = () => {
       toast.error('No Movement wallet found');
       return;
     }
-    
-        return (
-          <>
-            <AccountRecoveryHelper 
-              show={!moveWallet || (moveBalance?.networkStatus === 'down' || moveBalance?.networkStatus === 'degraded')} 
-            >
-              <div className="bg-white rounded-lg shadow p-6 border border border-gray-200">
-                <p className="text-center text-gray-500 text-sm">
-                  No Movement wallet found in your account. Please check your Profile section to create or sync wallets.
-                </p>
-              </div>
-            </AccountRecoveryHelper>
-          </>
-        );
 
     setSending(true);
     const toastId = toast.loading(`Sending ${selectedToken}...`);
