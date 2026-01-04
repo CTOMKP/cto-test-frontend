@@ -683,11 +683,26 @@ export const ListingsPage: React.FC = () => {
                       return (volume / 1000000000).toFixed(1) + 'B';
                     };
                     
+                    // Format age into d / mo / y for better readability
+                    const formatAge = (days: number) => {
+                      if (!isFinite(days) || days < 0) return '--';
+                      if (days < 30) return `${Math.floor(days)}d`;
+                      if (days < 365) return `${Math.floor(days / 30)}mo`;
+                      return `${(days / 365).toFixed(1)}y`;
+                    };
+
                     // Get age from backend (actual token age) or fallback to updatedAt calculation
                     const getAge = (item: ListingItem) => {
                       // Priority 1: Use backend-provided age (actual token age from creation)
-                      if (item.age && typeof item.age === 'string' && item.age.trim() !== '') {
-                        return item.age;
+                      if (item.age) {
+                        // Accept number or strings like "633", "633d", "633 days"
+                        const raw = typeof item.age === 'number'
+                          ? item.age
+                          : parseFloat(item.age);
+                        if (isFinite(raw)) {
+                          return formatAge(raw);
+                        }
+                        return item.age; // fallback to whatever string was provided
                       }
                       
                       // Priority 2: Fallback to calculating from updatedAt (time since last update)
@@ -700,13 +715,13 @@ export const ListingsPage: React.FC = () => {
                           const diff = Date.now() - timestamp;
                           if (diff < 0) return '--';
                           
-                          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-                          const hours = Math.floor(diff / (1000 * 60 * 60));
+                          const days = diff / (1000 * 60 * 60 * 24);
+                          const hours = diff / (1000 * 60 * 60);
                           
-                          if (days > 0) {
-                            return days + 'd';
-                          } else if (hours > 0) {
-                            return hours + 'h';
+                          if (days >= 1) {
+                            return formatAge(days);
+                          } else if (hours >= 1) {
+                            return Math.floor(hours) + 'h';
                           } else {
                             const minutes = Math.floor(diff / (1000 * 60));
                             return Math.max(1, minutes) + 'm';
