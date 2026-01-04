@@ -279,13 +279,23 @@ export const MovementWalletActivity: React.FC = () => {
   const usdcBalance = balances.find(b => b.tokenSymbol === 'USDC.e');
   const moveBalance = balances.find(b => b.tokenSymbol === 'MOVE');
   
+  const usdcRaw = usdcBalance ? parseFloat(usdcBalance.balance) : 0;
+  const moveRaw = moveBalance ? parseFloat(moveBalance.balance) : 0;
+
   const usdcValue = usdcBalance 
-    ? (parseFloat(usdcBalance.balance) / Math.pow(10, usdcBalance.decimals)).toFixed(2)
+    ? (usdcRaw / Math.pow(10, usdcBalance.decimals)).toFixed(2)
     : '0.00';
   
   const moveValue = moveBalance 
-    ? (parseFloat(moveBalance.balance) / Math.pow(10, moveBalance.decimals)).toFixed(2)
+    ? (moveRaw / Math.pow(10, moveBalance.decimals)).toFixed(2)
     : '0.00';
+
+  // Guard: only allow sending when on-chain balance is present (not just indexer/stale)
+  const usdcIsStale = !!(usdcBalance?.isStale || usdcBalance?.networkStatus === 'down' || usdcBalance?.networkStatus === 'degraded');
+  const moveIsStale = !!(moveBalance?.isStale || moveBalance?.networkStatus === 'down' || moveBalance?.networkStatus === 'degraded');
+  const usdcSpendable = !!(usdcBalance && usdcRaw > 0 && !usdcIsStale);
+  const moveSpendable = !!(moveBalance && moveRaw > 0 && !moveIsStale);
+  const isSelectedTokenSpendable = selectedToken === 'USDC' ? usdcSpendable : moveSpendable;
 
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
@@ -383,11 +393,18 @@ export const MovementWalletActivity: React.FC = () => {
             </div>
             <button 
               onClick={handleSend}
-              disabled={sending}
+              disabled={sending || !isSelectedTokenSpendable}
               className="w-full py-2 bg-white text-blue-600 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
             >
               {sending ? 'Sending...' : `Confirm Transfer`}
             </button>
+            {!isSelectedTokenSpendable && (
+              <p className="text-[11px] text-yellow-100 bg-yellow-500/30 border border-yellow-300/60 rounded px-3 py-2">
+                {selectedToken === 'USDC'
+                  ? 'USDC balance not confirmed on-chain yet (indexer-only/stale). Wait for a fresh deposit on this testnet before sending.'
+                  : 'MOVE balance not confirmed on-chain yet. Please wait for a confirmed balance before sending.'}
+              </p>
+            )}
           </div>
         )}
       </div>
