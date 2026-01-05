@@ -4,9 +4,9 @@ import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
-import { normalizeImageUrl } from '../../utils/helpers';
+import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
 import { enrichMarket } from '../../services/marketEnrichment';
-import listingService from '../../services/listingService';
+import listingService, { TradeEvent } from '../../services/listingService';
 import { TokenAnalytics } from './TokenAnalytics';
 
 interface PublicListing {
@@ -43,6 +43,9 @@ export const ListingDetail: React.FC = () => {
   const [smallBanner, setSmallBanner] = useState(false); // guard against over-zooming blurry banners
   const [isUpdated, setIsUpdated] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const [trades, setTrades] = useState<TradeEvent[]>([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
+  const [tradesError, setTradesError] = useState<string | null>(null);
 
   // Function to ensure complete data with consistent fallbacks
   const ensureCompleteData = (original: PublicListing): Partial<PublicListing> => {
@@ -138,6 +141,36 @@ export const ListingDetail: React.FC = () => {
       }
     };
     if (contractAddress) load();
+  }, [contractAddress]);
+
+  // Load recent trades
+  useEffect(() => {
+    if (!contractAddress) return;
+    let cancelled = false;
+
+    const loadTrades = async () => {
+      setTradesLoading(true);
+      setTradesError(null);
+      try {
+        const results = await listingService.getTokenTrades(contractAddress, 50);
+        if (!cancelled) {
+          setTrades(Array.isArray(results) ? results : []);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setTradesError(e?.message || 'Failed to load recent trades');
+        }
+      } finally {
+        if (!cancelled) {
+          setTradesLoading(false);
+        }
+      }
+    };
+
+    loadTrades();
+    return () => {
+      cancelled = true;
+    };
   }, [contractAddress]);
 
   // Setup WebSocket connection for real-time updates
@@ -419,6 +452,60 @@ export const ListingDetail: React.FC = () => {
             liquidityUsd={data.liquidityUsd || undefined}
             volume24h={data.volume24h || undefined}
           />
+        </div>
+
+        {/* Recent Trades */}
+        <div className="mt-6 bg-white border rounded shadow-sm">
+          <div className="border-b px-4 py-3">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Trades</h3>
+            <p className="text-sm text-gray-500">Buy/Sell activity for this token</p>
+          </div>
+          <div className="px-4 py-3">
+            {tradesLoading && (
+              <div className="text-sm text-gray-500">Loading recent trades...</div>
+            )}
+            {!tradesLoading && tradesError && (
+              <div className="text-sm text-red-600">{tradesError}</div>
+            )}
+            {!tradesLoading && !tradesError && trades.length === 0 && (
+              <div className="text-sm text-gray-500">No trades yet.</div>
+            )}
+            {!tradesLoading && !tradesError && trades.length > 0 && (
+              <div className="divide-y">
+                {trades.map((trade, idx) => (
+                  <div
+                    key={trade.transactionHash || idx}
+                    className="py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`px-2 py-1 text-xs font-semibold rounded ${
+                          trade.type === 'buy'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {trade.type === 'buy' ? 'Buy' : 'Sell'}
+                      </span>
+                      <div className="text-sm text-gray-700">
+                        {trade.amountToken} token @ {trade.amountMOVE} MOVE
+                        {trade.priceUSD ? ` ($${trade.priceUSD})` : ''}
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 flex flex-col md:items-end">
+                      <span>Swapper: {formatAddress(trade.swapper || '', 6, 6)}</span>
+                      {trade.transactionHash && (
+                        <span>Tx: {formatAddress(trade.transactionHash, 6, 6)}</span>
+                      )}
+                      {trade.timestamp && (
+                        <span>{new Date(trade.timestamp).toLocaleString()}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

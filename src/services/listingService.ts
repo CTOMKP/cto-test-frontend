@@ -1,6 +1,16 @@
 import axios from 'axios';
 import { getBackendUrl } from '../utils/apiConfig';
 
+export interface TradeEvent {
+  type: 'buy' | 'sell';
+  swapper: string;
+  amountMOVE: number;
+  amountToken: number;
+  priceUSD?: number | null;
+  timestamp: string;
+  transactionHash: string;
+}
+
 export interface ListingQuery {
   q?: string;
   chain?: string;
@@ -38,6 +48,13 @@ export const listingService = {
     const token = localStorage.getItem('cto_jwt_token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     const res = await axios.post(`${backendUrl}/api/v1/listing/refresh`, { contractAddress, chain }, { headers });
+    return res.data;
+  },
+  async getTokenTrades(contractAddress: string, limit: number = 50): Promise<TradeEvent[]> {
+    const backendUrl = getBackendUrl();
+    const res = await axios.get(
+      `${backendUrl}/api/v1/tokens/${contractAddress}/trades?limit=${limit}`
+    );
     return res.data;
   },
 };
