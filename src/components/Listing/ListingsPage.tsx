@@ -618,6 +618,7 @@ export const ListingsPage: React.FC = () => {
                 <thead className="bg-gray-900">
                   <tr>
                     <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
+                    <th scope="col" className="px-3 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Buy</th>
                     <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">MC / Liq</th>
                     <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Holders</th>
                     <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Age</th>
@@ -766,6 +767,18 @@ export const ListingsPage: React.FC = () => {
                               <span className="text-[10px] text-gray-500 font-medium truncate max-w-[150px]">{it.name || it.contractAddress}</span>
                             </div>
                           </div>
+                        </td>
+                        {/* Buy */}
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                          <button
+                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/listing/${it.contractAddress}`);
+                            }}
+                          >
+                            Buy
+                          </button>
                         </td>
                         {/* MC / Liq */}
                         <td className="px-3 py-4 whitespace-nowrap text-right text-sm text-gray-300">
