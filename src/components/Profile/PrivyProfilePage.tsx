@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
-import { MovementWalletActivity } from '../UserListings/MovementWalletActivity';
+import { MovementWalletActivity, MovementWalletRecentActivity } from '../UserListings/MovementWalletActivity';
+import userListingsService from '../../services/userListingsService';
+import { getCloudFrontUrl } from '../../utils/image-url-helper';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -13,6 +15,15 @@ export const PrivyProfilePage: React.FC = () => {
   const [isCreatingMovement, setIsCreatingMovement] = useState(false);
   const [isSyncingWallets, setIsSyncingWallets] = useState(false);
   const [allWallets, setAllWallets] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'listings' | 'ads' | 'tx'>('listings');
+  const [myListings, setMyListings] = useState<any[]>([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [listingsError, setListingsError] = useState<string | null>(null);
+  const [activityState, setActivityState] = useState({
+    transactions: [] as any[],
+    loading: true,
+    syncing: false,
+  });
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
     // Check both localStorage keys (pfpService saves to cto_user_avatar_url)
     return localStorage.getItem('cto_user_avatar_url') || 
@@ -28,6 +39,7 @@ export const PrivyProfilePage: React.FC = () => {
       checkMovementWallet();
       loadBackendWallets();
       loadAvatarFromBackend();
+      loadMyListings();
     }
   }, [authenticated, user]);
 
@@ -259,6 +271,52 @@ export const PrivyProfilePage: React.FC = () => {
     navigate(ROUTES.login);
   };
 
+  const loadMyListings = async () => {
+    try {
+      setListingsLoading(true);
+      setListingsError(null);
+      const res = await userListingsService.mine();
+      setMyListings(res?.items || []);
+    } catch (error: any) {
+      setListingsError(error?.response?.data?.message || error?.message || 'Failed to load listings');
+    } finally {
+      setListingsLoading(false);
+    }
+  };
+
+  const formatCompactNumber = (value?: number | null) => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
+    const num = Number(value);
+    if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
+    if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+    if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+    return num.toFixed(2);
+  };
+
+  const formatPrice = (value?: number | null) => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
+    return `$${Number(value).toFixed(6)}`;
+  };
+
+  const formatUsdCompact = (value?: number | null) => {
+    const compact = formatCompactNumber(value);
+    return compact === '--' ? '--' : `$${compact}`;
+  };
+
+  const toCloudFrontUrl = (url?: string | null) => {
+    if (!url || typeof url !== 'string') return undefined;
+    if (url.includes('cloudfront.net')) return url;
+    if (url.includes('/api/v1/images/view/')) {
+      const match = url.match(/\/api\/v1\/images\/view\/(.+)$/);
+      if (match) {
+        const imagePath = match[1].split('?')[0];
+        return getCloudFrontUrl(imagePath);
+      }
+    }
+    if (url.includes('user-uploads/')) return getCloudFrontUrl(url);
+    return url;
+  };
+
   if (!ready || !authenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -335,7 +393,136 @@ export const PrivyProfilePage: React.FC = () => {
         </div>
 
         {/* PROFESSIONAL ADDITION: Movement Wallet Dashboard */}
-        <MovementWalletActivity />
+        <MovementWalletActivity onActivityUpdate={setActivityState} />
+
+        {/* Profile Tabs */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+          <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3 mb-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab('listings')}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                activeTab === 'listings' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              My Listings
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('ads')}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                activeTab === 'ads' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              My Ads
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('tx')}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                activeTab === 'tx' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              Tx History
+            </button>
+          </div>
+
+          {activeTab === 'listings' && (
+            <div className="overflow-x-auto">
+              {listingsError && (
+                <div className="bg-red-50 text-red-700 border border-red-200 rounded p-3 mb-4 text-sm">
+                  {listingsError}
+                </div>
+              )}
+              {listingsLoading ? (
+                <div className="text-sm text-gray-500">Loading listings...</div>
+              ) : myListings.length === 0 ? (
+                <div className="text-sm text-gray-500">No listings yet.</div>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-3 pr-4">Name</th>
+                      <th className="py-3 pr-4">Status</th>
+                      <th className="py-3 pr-4">MC/Liq</th>
+                      <th className="py-3 pr-4">Holders</th>
+                      <th className="py-3 pr-4">Age</th>
+                      <th className="py-3 pr-4">Price/24h</th>
+                      <th className="py-3 pr-4">Community score</th>
+                      <th className="py-3">Risk score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myListings.map((listing) => {
+                      const scan = listing.scanMetadata || {};
+                      const logo = toCloudFrontUrl(listing.logoUrl);
+                      const statusBadge =
+                        listing.status === 'PUBLISHED'
+                          ? 'bg-green-100 text-green-800'
+                          : listing.status === 'PENDING_APPROVAL'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : listing.status === 'REJECTED'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-gray-100 text-gray-800';
+                      return (
+                        <tr key={listing.id} className="border-b hover:bg-gray-50">
+                          <td className="py-4 pr-4">
+                            <Link to={`/user-listings/${listing.id}`} className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+                                {logo ? (
+                                  <img src={logo} alt={listing.title} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="text-xs text-gray-400">N/A</span>
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-gray-900">{listing.title}</div>
+                                <div className="text-xs text-gray-500">{listing.chain}</div>
+                              </div>
+                            </Link>
+                          </td>
+                          <td className="py-4 pr-4">
+                            <span className={`text-xs px-2 py-1 rounded ${statusBadge}`}>
+                              {listing.status}
+                            </span>
+                          </td>
+                          <td className="py-4 pr-4 text-gray-900 whitespace-nowrap">
+                            {formatUsdCompact(scan.market_cap)} / {formatUsdCompact(scan.lp_amount_usd)}
+                          </td>
+                          <td className="py-4 pr-4">{scan.holder_count ?? '--'}</td>
+                          <td className="py-4 pr-4">{scan.age_display_short || '--'}</td>
+                          <td className="py-4 pr-4 text-gray-900 whitespace-nowrap">
+                            {formatPrice(scan.token_price)} / {formatUsdCompact(scan.volume_24h)}
+                          </td>
+                          <td className="py-4 pr-4">{scan.community_score ?? '--'}</td>
+                          <td className="py-4">
+                            <span className="font-semibold text-gray-900">
+                              {listing.vettingScore ?? listing.scanRiskScore ?? '--'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'ads' && (
+            <div className="text-sm text-gray-500">Ad management is coming soon.</div>
+          )}
+
+          {activeTab === 'tx' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <MovementWalletRecentActivity
+                transactions={activityState.transactions}
+                loading={activityState.loading}
+                syncing={activityState.syncing}
+              />
+            </div>
+          )}
+        </div>
 
         {/* Navigation */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
@@ -521,4 +708,3 @@ export const PrivyProfilePage: React.FC = () => {
     </div>
   );
 };
-

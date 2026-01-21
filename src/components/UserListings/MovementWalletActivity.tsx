@@ -8,7 +8,123 @@ import { usePrivy } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
 import { AccountRecoveryHelper } from '../AccountRecoveryHelper';
 
-export const MovementWalletActivity: React.FC = () => {
+type MovementWalletActivityProps = {
+  mode?: 'full' | 'history';
+  onActivityUpdate?: (state: {
+    transactions: WalletTransaction[];
+    loading: boolean;
+    syncing: boolean;
+  }) => void;
+};
+
+type MovementWalletRecentActivityProps = {
+  transactions: WalletTransaction[];
+  loading: boolean;
+  syncing: boolean;
+};
+
+export const MovementWalletRecentActivity: React.FC<MovementWalletRecentActivityProps> = ({
+  transactions,
+  loading,
+  syncing,
+}) => (
+  <>
+    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Recent Activity</h3>
+    {loading && !syncing ? (
+      <div className="flex justify-center py-4">
+        <div className="animate-pulse flex space-x-2">
+          <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
+          <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
+          <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
+        </div>
+      </div>
+    ) : transactions.length > 0 ? (
+      <div className="space-y-3">
+        {transactions.map((tx) => (
+          <div key={tx.id} className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-3">
+              <div className={`p-1.5 rounded-full ${
+                tx.txType === 'CREDIT' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              }`}>
+                {tx.txType === 'CREDIT' ? (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                  </svg>
+                )}
+              </div>
+              <div>
+                <p className="font-medium text-gray-800">
+                  {tx.txType === 'CREDIT' ? 'Deposit' : 'Payment'}
+                </p>
+                <p className="text-[10px] text-gray-400">
+                  {new Date(tx.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                </p>
+                <p className="text-[10px] text-gray-500 font-mono">
+                  {(() => {
+                    const counterparty =
+                      tx.txType === 'CREDIT'
+                        ? tx.fromAddress || tx.txHash
+                        : tx.toAddress || tx.txHash;
+                    return counterparty
+                      ? `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`
+                      : '';
+                  })()}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className={`font-bold ${tx.txType === 'CREDIT' ? 'text-green-600' : 'text-gray-800'}`}>
+                {tx.txType === 'CREDIT' ? '+' : '-'}
+                {(() => {
+                  const isUSDC = tx.tokenSymbol?.toLowerCase().includes('usdc');
+                  const divisor = isUSDC ? 1000000 : 100000000;
+                  const decimals = isUSDC ? 2 : 2;
+                  const amount = parseFloat(tx.amount) / divisor;
+                  const symbol = isUSDC ? 'USDC' : 'MOVE';
+                  return `${amount.toFixed(decimals)} ${symbol}`;
+                })()}
+              </p>
+              <p className="text-[10px] text-gray-500 font-mono">
+                {(() => {
+                  const counterparty =
+                    tx.txType === 'CREDIT'
+                      ? tx.fromAddress || tx.txHash
+                      : tx.toAddress || tx.txHash;
+                  return `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
+                })()}
+              </p>
+              <a 
+                href={(() => {
+                  if (tx.txHash?.startsWith('version-')) {
+                    const version = tx.txHash.replace('version-', '');
+                    return `https://explorer.movementnetwork.xyz/version/${version}?network=bardock+testnet`;
+                  }
+                  return `https://explorer.movementnetwork.xyz/txn/${tx.txHash}?network=bardock+testnet`;
+                })()} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-[9px] text-blue-500 hover:underline font-mono"
+              >
+                {tx.txHash.substring(0, 6)}...{tx.txHash.substring(tx.txHash.length - 4)}
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p className="text-xs text-gray-400 text-center py-4 italic">No transactions detected yet.</p>
+    )}
+  </>
+);
+
+export const MovementWalletActivity: React.FC<MovementWalletActivityProps> = ({
+  mode = 'full',
+  onActivityUpdate,
+}) => {
   const { user: dbUser } = useAuth();
   const { user: privyUser } = usePrivy();
   const { signRawHash } = useSignRawHash();
@@ -122,7 +238,7 @@ export const MovementWalletActivity: React.FC = () => {
   }, [dbUser, activeWalletId, isAutoRecovering]);
 
   const loadData = useCallback(async (showLoading = true) => {
-    if (!activeWalletId) return;
+    if (!activeWalletId || mode !== 'full') return;
     
     try {
       if (showLoading) setLoading(true);
@@ -137,7 +253,7 @@ export const MovementWalletActivity: React.FC = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [activeWalletId]);
+  }, [activeWalletId, mode]);
 
   const handleSync = async (silent = false) => {
     if (!activeWalletId) return;
@@ -256,10 +372,14 @@ export const MovementWalletActivity: React.FC = () => {
   useEffect(() => {
     if (activeWalletId) {
       loadData();
-      // Auto-sync once on mount to get latest from blockchain
+      // Sync once on mount for both modes so history doesn't stay empty.
       handleSync(true);
     }
   }, [activeWalletId]);
+
+  useEffect(() => {
+    onActivityUpdate?.({ transactions, loading, syncing });
+  }, [transactions, loading, syncing, onActivityUpdate]);
 
   // PERIODIC BACKGROUND POLLING (Every 60 seconds to avoid rate limits)
   useEffect(() => {
@@ -297,8 +417,11 @@ export const MovementWalletActivity: React.FC = () => {
   const moveSpendable = !!(moveBalance && moveRaw > 0 && !moveIsStale);
   const isSelectedTokenSpendable = selectedToken === 'USDC' ? usdcSpendable : moveSpendable;
 
+  const isFull = mode === 'full';
+
   return (
     <div className="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
+      {isFull && (
       <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white">
         <div className="flex items-start justify-between">
           <div className="space-y-3">
@@ -408,71 +531,14 @@ export const MovementWalletActivity: React.FC = () => {
           </div>
         )}
       </div>
+      )}
 
       <div className="p-4">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Recent Activity</h3>
-        {loading && !syncing ? (
-          <div className="flex justify-center py-4">
-            <div className="animate-pulse flex space-x-2">
-              <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
-              <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
-              <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
-            </div>
-          </div>
-        ) : transactions.length > 0 ? (
-          <div className="space-y-3">
-            {transactions.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-3">
-                  <div className={`p-1.5 rounded-full ${
-                    tx.txType === 'CREDIT' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                  }`}>
-                    {tx.txType === 'CREDIT' ? (
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                      </svg>
-                    ) : (
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                      </svg>
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-800">
-                      {tx.txType === 'CREDIT' ? 'Deposit' : 'Payment'}
-                    </p>
-                    <p className="text-[10px] text-gray-400">
-                      {new Date(tx.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={`font-bold ${tx.txType === 'CREDIT' ? 'text-green-600' : 'text-gray-800'}`}>
-                    {tx.txType === 'CREDIT' ? '+' : '-'}
-                    {(() => {
-                      const isUSDC = tx.tokenSymbol?.toLowerCase().includes('usdc');
-                      const divisor = isUSDC ? 1000000 : 100000000;
-                      const decimals = isUSDC ? 2 : 2;
-                      const amount = parseFloat(tx.amount) / divisor;
-                      const symbol = isUSDC ? 'USDC' : 'MOVE';
-                      return `${amount.toFixed(decimals)} ${symbol}`;
-                    })()}
-                  </p>
-                  <a 
-                    href={`https://explorer.movementnetwork.xyz/txn/${tx.txHash}?network=bardock+testnet`} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-[9px] text-blue-500 hover:underline font-mono"
-                  >
-                    {tx.txHash.substring(0, 6)}...{tx.txHash.substring(tx.txHash.length - 4)}
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 text-center py-4 italic">No transactions detected yet.</p>
-        )}
+        <MovementWalletRecentActivity
+          transactions={transactions}
+          loading={loading}
+          syncing={syncing}
+        />
       </div>
     </div>
   );
