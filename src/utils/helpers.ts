@@ -110,11 +110,15 @@ export const buildImageCandidates = (input?: string | null): string[] => {
   const add = (v?: string) => { if (v && !out.includes(v)) out.push(v); };
   if (!input) return out;
 
+  // Always try the raw input first (e.g., direct CloudFront URL)
+  const rawInput = String(input).trim();
+  add(rawInput);
+
   // Primary normalized
   add(normalizeImageUrl(input));
 
   try {
-    const raw = String(input).trim();
+    const raw = rawInput;
     // If we have a URL, extract path + basename
     try {
       const u = new URL(raw);
