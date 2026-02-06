@@ -1,0 +1,70 @@
+Fixes applied to cto-frontend-old-fresh
+
+1) Privy payment endpoints were missing JWT
+What was wrong
+- Backend requires JwtAuthGuard for Privy payment routes, but the test frontend did not send Authorization headers.
+- Calls failed with 401 even after successful login.
+
+What I changed (test frontend)
+- File: cto-frontend-old-fresh/src/services/privyPaymentService.ts
+- Added reading cto_auth_token from localStorage.
+- Added Authorization: Bearer <token> headers to:
+  - POST /api/v1/payment/privy/listing
+  - POST /api/v1/payment/privy/verify/:paymentId
+- Throws a clear error if token is missing.
+
+How to implement the same fix in main-cto-frontend
+- File: main-cto-frontend/src/services/privyPaymentService.ts
+- Add the same Authorization header logic using cto_auth_token.
+- Keep existing API paths (main frontend uses /api/payment/privy/...)
+
+Reference snippet (logic only):
+const token = localStorage.getItem('cto_auth_token');
+if (!token) throw new Error('No authentication token');
+headers: {
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${token}`,
+}
+
+2) Privy payment moved to legacy and removed from UI
+What was changed
+- File moved: cto-frontend-old-fresh/src/services/privyPaymentService.ts -> cto-frontend-old-fresh/src/legacy/privyPaymentService.ts
+- File updated: cto-frontend-old-fresh/src/components/Payment/ListingPayment.tsx
+  - Removed Privy EVM + Circle payment paths and UI selector.
+  - Movement payment is now the only active flow in the UI.
+  - Manual verify uses Movement payment verify with the saved txHash.
+
+How to implement the same in main-cto-frontend
+- Move or archive the Privy EVM/Circle payment UI so only Movement is selectable.
+- Keep any legacy payment service in a legacy folder if needed for reference.
+
+3) Movement-only pricing in test frontend (remove Circle pricing fetch)
+What was changed
+- File moved to legacy: cto-frontend-old-fresh/src/services/paymentService.ts -> cto-frontend-old-fresh/src/legacy/paymentService.ts
+- File updated: cto-frontend-old-fresh/src/components/UserListings/MyUserListings.tsx
+  - Removed pricing fetch from /api/v1/payment/pricing
+  - Removed listingPrice state (now fixed to 1.0 USDC in UI text)
+
+How to implement the same in main-cto-frontend
+- Remove calls to /api/payment/pricing (Circle pricing) from My Listings UI.
+- Hardcode 1.0 USDC display (or read Movement listing amount from backend if you add an endpoint).
+
+Backend note (for backend devs)
+- Privy/Circle payment controllers/services moved to legacy and removed from PaymentModule.
+- Active payments are Movement-only now.
+
+4) Presentable listings rotation removed (manual curation only)
+What was changed
+- File: cto-backend-old-fresh/src/listing/workers/refresh.worker.ts
+  - Removed disabled dailyRotation() method (was commented out with @Cron disabled)
+  - Removed disabled enforceTokenLimitRotation() method
+  - Updated comments to clarify: "Tokens are manually managed via POST /api/listing/add"
+  - No automatic deletion or rotation - all tokens are manually curated
+
+Current behavior
+- Tokens are added manually via POST /api/listing/add endpoint
+- No automatic daily rotation or token limit enforcement
+- Manual curation model (as per user requirement)
+
+Documentation
+- Any docs mentioning "25 tokens, daily rotation" should be updated to reflect manual curation model

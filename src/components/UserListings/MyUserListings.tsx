@@ -7,7 +7,6 @@ import userListingsService from '../../services/userListingsService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import { ListingPayment } from '../Payment/ListingPayment';
 import { MovementWalletActivity } from './MovementWalletActivity';
-import { paymentService } from '../../services/paymentService';
 import toast from 'react-hot-toast';
 
 export const MyUserListings: React.FC = () => {
@@ -16,7 +15,6 @@ export const MyUserListings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState<{listingId: string; title: string} | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [listingPrice, setListingPrice] = useState<number>(50); // Default to 50, will be updated from backend
 
   const load = async () => {
     try {
@@ -31,20 +29,6 @@ export const MyUserListings: React.FC = () => {
     }
   };
 
-  const loadPricing = async () => {
-    try {
-      const data = await paymentService.getPricing();
-      // Response type: { pricing: PaymentPricing; currency: string }
-      // PaymentPricing has: { listing: number; adBoosts: {...} }
-      if (data?.pricing?.listing !== undefined) {
-      setListingPrice(data.pricing.listing);
-      }
-      // Keep default price if fetch fails or structure is unexpected
-    } catch (error) {
-      console.error('Failed to load pricing:', error);
-      // Keep default price if fetch fails
-    }
-  };
 
   const handleDelete = async (listingId: string, listingTitle: string) => {
     if (!confirm(`Are you sure you want to delete "${listingTitle}"? This action cannot be undone.`)) {
@@ -66,7 +50,6 @@ export const MyUserListings: React.FC = () => {
 
   useEffect(() => { 
     load(); 
-    loadPricing();
 
     // Auto-refresh listings every 30 seconds (like gmgn.ai)
     // Reduced frequency to avoid excessive API calls and page refreshes

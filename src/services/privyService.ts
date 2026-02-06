@@ -25,9 +25,9 @@ class PrivyService {
 
       if (response.data.success) {
         // Store CTO JWT token
-        localStorage.setItem('cto_token', response.data.token);
+        localStorage.setItem('cto_auth_token', response.data.token);
         localStorage.setItem('cto_user_email', response.data.user.email);
-        localStorage.setItem('cto_user_id', response.data.user.id);
+        localStorage.setItem('cto_user_id', response.data.user.id.toString());
         
         if (response.data.user.walletAddress) {
           localStorage.setItem('cto_wallet_address', response.data.user.walletAddress);
@@ -74,7 +74,7 @@ class PrivyService {
    */
   async getMe() {
     try {
-      const token = localStorage.getItem('cto_token');
+      const token = localStorage.getItem('cto_auth_token');
       if (!token) {
         throw new Error('No authentication token');
       }
@@ -100,7 +100,7 @@ class PrivyService {
    */
   async getUserWallets() {
     try {
-      const token = localStorage.getItem('cto_token');
+      const token = localStorage.getItem('cto_auth_token');
       if (!token) {
         throw new Error('No authentication token');
       }
@@ -125,14 +125,13 @@ class PrivyService {
    * Logout user (clear tokens)
    */
   logout() {
-    localStorage.removeItem('cto_token');
+    localStorage.removeItem('cto_auth_token');
     localStorage.removeItem('cto_user_email');
     localStorage.removeItem('cto_user_id');
     localStorage.removeItem('cto_wallet_address');
+    localStorage.removeItem('cto_token');
     console.log('✅ User logged out');
   }
 }
 
 export const privyService = new PrivyService();
-
-

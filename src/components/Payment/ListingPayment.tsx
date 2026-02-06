@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
-import { paymentService } from '../../services/paymentService';
 import { privyService } from '../../services/privyService';
-import { privyPaymentService } from '../../services/privyPaymentService';
 import { movementPaymentService } from '../../services/movementPaymentService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
 import toast from 'react-hot-toast';
@@ -23,35 +21,15 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   onCancel,
 }) => {
   const navigate = useNavigate();
-  const { authenticated, user, sendTransaction } = usePrivy();
+  const { authenticated, user } = usePrivy();
   const { signRawHash } = useSignRawHash();
   const [loading, setLoading] = useState(false);
-  const [pricing, setPricing] = useState<number>(50);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const [selectedChain, setSelectedChain] = useState<string>('base');
-  const [paymentMethod, setPaymentMethod] = useState<'movement' | 'evm' | 'circle'>('movement');
+  const [movementTxHash, setMovementTxHash] = useState<string | null>(null);
 
   const userId = localStorage.getItem('cto_user_email') || '';
-  const userIdNum = parseInt(localStorage.getItem('cto_user_id') || '0');
   const isPrivyUser = authenticated && user;
-
-  useEffect(() => {
-    loadPricing();
-  }, []);
-
-  const loadPricing = async () => {
-    try {
-      const data = await paymentService.getPricing();
-      // Safe access to pricing data
-      if (data?.pricing?.listing !== undefined) {
-      setPricing(data.pricing.listing);
-      }
-    } catch (error) {
-      console.error('Failed to load pricing:', error);
-      // Keep default pricing (50) if fetch fails
-    }
-  };
 
   const handlePayment = async () => {
     if (!userId) {
@@ -61,194 +39,141 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
     setLoading(true);
     try {
-      // Movement payment flow (preferred for user listings)
-      if (paymentMethod === 'movement') {
-        console.log('💳 Using Movement payment flow');
-        
-        // Ensure user is actually logged in with Privy
-        if (!isPrivyUser) {
-          toast.error('Privy session not found. Please log out and log back in.');
-          setLoading(false);
-          return;
-        }
-        
-        // Check if user has Movement wallet
-        let movementWallet = getMovementWallet(user);
-        
-        // --- RESILIENCE: If frontend doesn't see it, check the backend/DB ---
-        if (!movementWallet) {
-          console.log('🔍 Wallet not in Privy object, checking backend DB...');
-          try {
-            const walletResult = await privyService.getUserWallets();
-            const wallets = walletResult?.data?.wallets || walletResult?.wallets || [];
-            const dbWallet = wallets.find((w: any) => 
-              w.blockchain?.toUpperCase() === 'MOVEMENT' || 
-              w.blockchain?.toUpperCase() === 'APTOS'
-            );
-            
-            if (dbWallet) {
-              console.log('✅ Found wallet in DB:', dbWallet.address);
-              // Use the DB wallet details as a fallback
-              movementWallet = {
-                address: dbWallet.address,
-                publicKey: dbWallet.publicKey || dbWallet.address, // Fallback if pubkey missing
-                chainType: 'aptos'
-              };
-            }
-          } catch (e) {
-            console.warn('Backend wallet check failed', e);
-          }
-        }
+      console.log('Using Movement payment flow');
 
-        if (!movementWallet) {
-          toast.error('No Movement wallet found. Please go to Profile and click "Sync Wallets".');
-          setLoading(false);
-          return;
-        }
+      // Ensure user is actually logged in with Privy
+      if (!isPrivyUser) {
+        toast.error('Privy session not found. Please log out and log back in.');
+        setLoading(false);
+        return;
+      }
 
+      // Check if user has Movement wallet
+      let movementWallet = getMovementWallet(user);
+
+      // --- RESILIENCE: If frontend doesn't see it, check the backend/DB ---
+      if (!movementWallet) {
+        console.log('Wallet not in Privy object, checking backend DB...');
         try {
-          const result = await movementPaymentService.createListingPayment(listingId);
-          
-          // Handle wrapped response
-          const paymentData = result?.data || result;
+          const walletResult = await privyService.getUserWallets();
+          const wallets = walletResult?.data?.wallets || walletResult?.wallets || [];
+          const dbWallet = wallets.find((w: any) =>
+            w.blockchain?.toUpperCase() === 'MOVEMENT' ||
+            w.blockchain?.toUpperCase() === 'APTOS'
+          );
 
-          if (!paymentData?.success) {
-            throw new Error(paymentData?.message || 'Failed to create payment');
+          if (dbWallet) {
+            console.log('Found wallet in DB:', dbWallet.address);
+            // Use the DB wallet details as a fallback
+            movementWallet = {
+              address: dbWallet.address,
+              publicKey: dbWallet.publicKey || dbWallet.address, // Fallback if pubkey missing
+              chainType: 'aptos'
+            };
           }
-
-          console.log('✅ Movement payment data received:', paymentData);
-          toast.success('Signing transaction with Privy Movement wallet...');
-          setPaymentId(paymentData.paymentId);
-
-          // Send Movement transaction using Aptos SDK and Privy signing
-          // Movement uses Aptos-compatible transaction format
-          const transactionData = paymentData.transactionData;
-          
-          try {
-            // Get wallet public key
-            const publicKey = movementWallet.publicKey || movementWallet.public_key;
-            if (!publicKey) {
-              throw new Error('Public key not found in Movement wallet');
-            }
-
-            // Send Movement transaction using helper function
-            const txHash = await sendMovementTransaction(
-              transactionData,
-              movementWallet.address,
-              publicKey,
-              signRawHash
-            );
-
-            console.log('✅ Movement transaction sent:', txHash);
-            toast.success('Transaction submitted! Verifying payment...');
-
-            // Verify payment
-            setTimeout(async () => {
-              try {
-                const verifyResult = await movementPaymentService.verifyPayment(
-                  paymentData.paymentId,
-                  txHash
-                );
-
-                // Handle wrapped response
-                const verifyData = verifyResult?.data || verifyResult;
-
-                if (verifyData?.success && verifyData?.payment?.status === 'COMPLETED') {
-                  toast.success('Payment confirmed! Listing is now published!');
-                  setLoading(false);
-                  if (onPaymentComplete) onPaymentComplete();
-                  setTimeout(() => {
-                    navigate('/user-listings/mine');
-                  }, 2000);
-                } else {
-                  toast.error('Payment verification failed. Please try again.');
-                  setLoading(false);
-                }
-              } catch (verifyError: any) {
-                console.error('Payment verification failed:', verifyError);
-                toast.error(verifyError?.message || 'Failed to verify payment');
-                setLoading(false);
-              }
-            }, 5000);
-          } catch (txError: any) {
-            console.error('Movement transaction failed:', txError);
-            toast.error(txError?.message || 'Transaction cancelled or failed');
-            setPaymentId(null);
-            setLoading(false);
-            return;
-          }
-        } catch (error: any) {
-          console.error('Movement payment creation failed:', error);
-          
-          // Always clear loading state
-          setLoading(false);
-          setPaymentId(null);
-          
-          // Extract error message from response
-          let errorMsg = 'Payment creation failed. Please try again.';
-          if (error?.response?.data) {
-            const data = error.response.data;
-            errorMsg = data.message || data.error || (data.data?.message) || (typeof data === 'string' ? data : errorMsg);
-          } else if (error?.message) {
-            errorMsg = error.message;
-          }
-          
-          // Show the RAW error message from the backend so we can see User ID/Wallet counts
-          toast.error(errorMsg, { duration: 6000 });
-          return;
+        } catch (e) {
+          console.warn('Backend wallet check failed', e);
         }
       }
-      // EVM Privy payment flow (for other chains)
-      else if (paymentMethod === 'evm' && isPrivyUser && userIdNum > 0) {
-        console.log('💳 Using Privy EVM payment flow');
-        
-        const result = await privyPaymentService.payForListing({
-          userId: userIdNum,
-          listingId,
-          chain: selectedChain,
-        });
 
-        if (result.success) {
-          console.log('✅ Transaction data received:', result.transactionData);
-          toast.success('Signing transaction with Privy...');
-          setPaymentId(result.paymentId);
+      if (!movementWallet) {
+        toast.error('No Movement wallet found. Please go to Profile and click "Sync Wallets".');
+        setLoading(false);
+        return;
+      }
 
-          // Send transaction using Privy
-          try {
-            const txReceipt = await sendTransaction(result.transactionData.evmTransactionData);
-            console.log('✅ Transaction sent:', txReceipt);
-            
-            toast.success('Transaction submitted! Verifying...');
-            
-            // Verify payment
-            setTimeout(() => {
-              verifyPayment(result.paymentId);
-            }, 5000);
-          } catch (txError: any) {
-            console.error('Transaction failed:', txError);
-            toast.error('Transaction cancelled or failed');
-            setLoading(false);
-            return;
+      try {
+        const result = await movementPaymentService.createListingPayment(listingId);
+
+        // Handle wrapped response
+        const paymentData = result?.data || result;
+
+        if (!paymentData?.success) {
+          throw new Error(paymentData?.message || 'Failed to create payment');
+        }
+
+        console.log('Movement payment data received:', paymentData);
+        toast.success('Signing transaction with Privy Movement wallet...');
+        setPaymentId(paymentData.paymentId);
+
+        // Send Movement transaction using Aptos SDK and Privy signing
+        // Movement uses Aptos-compatible transaction format
+        const transactionData = paymentData.transactionData;
+
+        try {
+          // Get wallet public key
+          const publicKey = movementWallet.publicKey || movementWallet.public_key;
+          if (!publicKey) {
+            throw new Error('Public key not found in Movement wallet');
           }
-        }
-      } 
-      // Circle payment flow (legacy)
-      else {
-        console.log('💳 Using Circle payment flow');
-        
-        const result = await paymentService.payForListing({
-          userId,
-          listingId,
-        });
 
-        if (result.success) {
-          toast.success('Payment initiated! Waiting for confirmation...');
-          setPaymentId(result.paymentId);
-          
-          setTimeout(() => {
-            verifyPayment(result.paymentId);
-          }, 10000);
+          // Send Movement transaction using helper function
+          const txHash = await sendMovementTransaction(
+            transactionData,
+            movementWallet.address,
+            publicKey,
+            signRawHash
+          );
+
+          console.log('Movement transaction sent:', txHash);
+          toast.success('Transaction submitted! Verifying payment...');
+          setMovementTxHash(txHash);
+
+          // Verify payment
+          setTimeout(async () => {
+            try {
+              const verifyResult = await movementPaymentService.verifyPayment(
+                paymentData.paymentId,
+                txHash
+              );
+
+              // Handle wrapped response
+              const verifyData = verifyResult?.data || verifyResult;
+
+              if (verifyData?.success && verifyData?.payment?.status === 'COMPLETED') {
+                toast.success('Payment confirmed! Listing is now published!');
+                setLoading(false);
+                if (onPaymentComplete) onPaymentComplete();
+                setTimeout(() => {
+                  navigate('/user-listings/mine');
+                }, 2000);
+              } else {
+                toast.error('Payment verification failed. Please try again.');
+                setLoading(false);
+              }
+            } catch (verifyError: any) {
+              console.error('Payment verification failed:', verifyError);
+              toast.error(verifyError?.message || 'Failed to verify payment');
+              setLoading(false);
+            }
+          }, 5000);
+        } catch (txError: any) {
+          console.error('Movement transaction failed:', txError);
+          toast.error(txError?.message || 'Transaction cancelled or failed');
+          setPaymentId(null);
+          setMovementTxHash(null);
+          setLoading(false);
+          return;
         }
+      } catch (error: any) {
+        console.error('Movement payment creation failed:', error);
+
+        // Always clear loading state
+        setLoading(false);
+        setPaymentId(null);
+
+        // Extract error message from response
+        let errorMsg = 'Payment creation failed. Please try again.';
+        if (error?.response?.data) {
+          const data = error.response.data;
+          errorMsg = data.message || data.error || (data.data?.message) || (typeof data === 'string' ? data : errorMsg);
+        } else if (error?.message) {
+          errorMsg = error.message;
+        }
+
+        // Show the RAW error message from the backend so we can see User ID/Wallet counts
+        toast.error(errorMsg, { duration: 6000 });
+        return;
       }
     } catch (error: any) {
       console.error('Payment failed:', error);
@@ -260,14 +185,13 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   };
 
   const verifyPayment = async (payId: string) => {
+    if (!movementTxHash) {
+      toast.error('Transaction hash not found. Please try the payment again.');
+      return;
+    }
     setVerifying(true);
     try {
-      let result;
-      if (isPrivyUser) {
-        result = await privyPaymentService.verifyPayment(payId);
-      } else {
-        result = await paymentService.verifyPayment(payId, userId);
-      }
+      const result = await movementPaymentService.verifyPayment(payId, movementTxHash);
       
       if (result.payment?.status === 'COMPLETED') {
         toast.success('Payment confirmed! Listing is now published!');
@@ -305,7 +229,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-600">Listing Fee:</span>
             <span className="text-2xl font-bold text-gray-800">
-              {paymentMethod === 'movement' ? '1.0 USDC' : `$${pricing} USDC`}
+              1.0 USDC
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-2">
@@ -315,54 +239,6 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         {!paymentId ? (
           <div className="space-y-3">
-            {isPrivyUser && (
-              <>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Payment Method
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as 'movement' | 'evm' | 'circle')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="movement">Movement (1.0 USDC) - Recommended</option>
-                    <option value="evm">EVM Chains (USDC)</option>
-                    <option value="circle">Circle Wallet (USDC)</option>
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {paymentMethod === 'movement' 
-                      ? 'Pay with official USDC on Movement using your Privy wallet.'
-                      : paymentMethod === 'evm'
-                      ? 'Pay with USDC on EVM chains (Base, Polygon, etc.)'
-                      : 'Pay with USDC from your Circle wallet.'}
-                  </p>
-                </div>
-                
-                {paymentMethod === 'evm' && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Select Chain for Payment
-                    </label>
-                    <select
-                      value={selectedChain}
-                      onChange={(e) => setSelectedChain(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="base">Base (Recommended)</option>
-                      <option value="polygon">Polygon</option>
-                      <option value="ethereum">Ethereum</option>
-                      <option value="arbitrum">Arbitrum</option>
-                      <option value="optimism">Optimism</option>
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Choose which chain to pay from. Base has lowest fees.
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
-            
             <button
               onClick={handlePayment}
               disabled={loading}
@@ -374,7 +250,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                   Processing...
                 </div>
               ) : (
-                paymentMethod === 'movement' ? 'Pay 1.0 USDC' : `Pay $${pricing} USDC`
+                'Pay 1.0 USDC'
               )}
             </button>
 
@@ -420,13 +296,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         <div className="mt-6 pt-4 border-t border-gray-200">
           <p className="text-xs text-gray-500">
-            <strong>Note:</strong> {
-              paymentMethod === 'movement' 
-                ? 'Ensure you have at least 1.0 USDC in your Movement wallet. You will also need a tiny amount of MOVE for gas.'
-                : paymentMethod === 'evm'
-                ? `Ensure you have at least ${pricing} USDC in your ${selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} wallet. Payment will be made from your Privy ${selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1)} wallet.`
-                : `Ensure you have at least ${pricing} USDC in your wallet. The payment will be deducted from your Circle wallet.`
-            }
+            <strong>Note:</strong> Ensure you have at least 1.0 USDC in your Movement wallet. You will also need a tiny amount of MOVE for gas.
           </p>
         </div>
       </div>
@@ -435,4 +305,3 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 };
 
 export default ListingPayment;
-
