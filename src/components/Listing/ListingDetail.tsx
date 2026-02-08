@@ -3,7 +3,7 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
 import { enrichMarket } from '../../services/marketEnrichment';
@@ -40,6 +40,7 @@ export const ListingDetail: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, authenticated } = usePrivy();
+  const { wallets } = useWallets();
   const { executeTrade } = useWalletRouter();
   const [data, setData] = useState<PublicListing | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -352,7 +353,7 @@ export const ListingDetail: React.FC = () => {
       const walletAddress = await getWalletAddressForChain(
         chainType as ChainType,
         user,
-        undefined
+        wallets
       );
 
       if (!walletAddress) {
