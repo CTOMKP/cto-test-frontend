@@ -397,9 +397,52 @@ export const ListingDetail: React.FC = () => {
         return;
       }
 
-      toast.success('Transaction ready', { id: 'build' });
+      // Check if this is an approval transaction (Base token sells)
+      if (transactionData.isApproval && chain === 'base') {
+        toast.loading('Approval required. Please approve token spending...', { id: 'approval' });
+        
+        // Execute approval transaction first
+        const approvalResult = await executeTrade(chainType as ChainType, user, {
+          swapTransactionBase64: transactionData.transaction,
+          quote,
+        });
 
-      // Step 4: Execute trade
+        if (!approvalResult.success) {
+          toast.error('Token approval failed. Please try again.', { id: 'approval' });
+          return;
+        }
+
+        toast.success('Token approved! Building swap transaction...', { id: 'approval' });
+        
+        // Wait a moment for approval to be confirmed
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Rebuild transaction (now with approval, should return swap transaction)
+        toast.loading('Building swap transaction...', { id: 'build' });
+        const swapBuildResponse = await axios.post(
+          `${backendUrl}/api/v1/trades/build-transaction`,
+          {
+            chain,
+            quote,
+            walletAddress,
+            slippageBps: 50,
+          }
+        );
+
+        const swapTransactionData = swapBuildResponse.data?.data || swapBuildResponse.data;
+        if (!swapTransactionData || swapTransactionData.isApproval) {
+          toast.error('Failed to build swap transaction after approval', { id: 'build' });
+          return;
+        }
+
+        // Update transactionData to the swap transaction
+        Object.assign(transactionData, swapTransactionData);
+        toast.success('Swap transaction ready', { id: 'build' });
+      } else {
+        toast.success('Transaction ready', { id: 'build' });
+      }
+
+      // Step 4: Execute trade (or swap if approval was done)
       toast.loading('Executing trade...', { id: 'execute' });
       
       let result;
