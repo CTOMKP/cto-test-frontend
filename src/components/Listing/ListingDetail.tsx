@@ -3,11 +3,13 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
+import { usePrivy } from '@privy-io/react-auth';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
 import { enrichMarket } from '../../services/marketEnrichment';
 import listingService, { TradeEvent } from '../../services/listingService';
 import { TokenAnalytics } from './TokenAnalytics';
+import { useWalletRouter, getWalletAddressForChain, ChainType } from '../../utils/walletRouter';
 
 interface PublicListing {
   id?: string;
@@ -37,6 +39,8 @@ export const ListingDetail: React.FC = () => {
   const { contractAddress } = useParams<{ contractAddress: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, authenticated } = usePrivy();
+  const { executeTrade } = useWalletRouter();
   const [data, setData] = useState<PublicListing | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +50,20 @@ export const ListingDetail: React.FC = () => {
   const [trades, setTrades] = useState<TradeEvent[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const [tradesError, setTradesError] = useState<string | null>(null);
+  const [trading, setTrading] = useState(false);
+  const [tradeAmount, setTradeAmount] = useState<string>('1000000'); // Default: 1 USDC/SOL
+  const isMovement = useMemo(() => {
+    if (!contractAddress) return false;
+    return contractAddress.startsWith('0x') || (data?.chain || '').toUpperCase().includes('MOVE');
+  }, [contractAddress, data?.chain]);
+  
+  const chainType = useMemo<ChainType>(() => {
+    if (!data?.chain) return 'SOLANA';
+    const chainUpper = data.chain.toUpperCase();
+    if (chainUpper === 'BASE') return 'BASE';
+    if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
+    return 'SOLANA';
+  }, [data?.chain]);
 
   // Function to ensure complete data with consistent fallbacks
   const ensureCompleteData = (original: PublicListing): Partial<PublicListing> => {
@@ -147,9 +165,10 @@ export const ListingDetail: React.FC = () => {
   useEffect(() => {
     if (!contractAddress) return;
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    const loadTrades = async () => {
-      setTradesLoading(true);
+    const loadTrades = async (silent = false) => {
+      if (!silent) setTradesLoading(true);
       setTradesError(null);
       try {
         const results = await listingService.getTokenTrades(contractAddress, 50);
@@ -168,8 +187,11 @@ export const ListingDetail: React.FC = () => {
     };
 
     loadTrades();
+    intervalId = setInterval(() => loadTrades(true), 8000);
+
     return () => {
       cancelled = true;
+      if (intervalId) clearInterval(intervalId);
     };
   }, [contractAddress]);
 
@@ -253,6 +275,164 @@ export const ListingDetail: React.FC = () => {
     const src = (data as any)?.bannerUrl || undefined; // public listings may not have banner
     return normalizeImageUrl(src) || src;
   }, [data]);
+
+  // Handle Buy/Sell trade execution
+  const handleTrade = async (tradeType: 'BUY' | 'SELL') => {
+    if (!user || !contractAddress || !data) {
+      toast.error('Missing required information');
+      return;
+    }
+
+    try {
+      setTrading(true);
+
+      // Determine input/output tokens based on chain
+      const chain = chainType.toLowerCase();
+      let inputToken: string;
+      let outputToken: string = contractAddress;
+
+      if (chain === 'solana' || chain === 'base') {
+        // For Solana/Base: Use SOL or USDC as input
+        inputToken = tradeType === 'BUY' 
+          ? 'So11111111111111111111111111111111111111112' // SOL
+          : contractAddress;
+        outputToken = tradeType === 'BUY'
+          ? contractAddress
+          : 'So11111111111111111111111111111111111111112'; // SOL
+      } else if (chain === 'movement') {
+        // For Movement: Use MOVE or USDC as input
+        inputToken = tradeType === 'BUY'
+          ? '0x1::aptos_coin::AptosCoin' // Native MOVE
+          : contractAddress;
+        outputToken = tradeType === 'BUY'
+          ? contractAddress
+          : '0x1::aptos_coin::AptosCoin';
+      } else {
+        toast.error('Unsupported chain');
+        return;
+      }
+
+      // Step 1: Get quote
+      toast.loading('Getting quote...', { id: 'quote' });
+      
+      let quoteResponse;
+      try {
+        quoteResponse = await axios.post(
+          `${backendUrl}/api/v1/trades/quote`,
+          {
+            chain,
+            inputToken,
+            outputToken,
+            amount: tradeAmount,
+            slippageBps: 50, // 0.5% slippage
+          },
+          {
+            timeout: 20000, // 20 second timeout
+          }
+        );
+      } catch (quoteError: any) {
+        toast.error(
+          quoteError.response?.data?.message || 
+          quoteError.message || 
+          'Failed to get quote. Please try again.',
+          { id: 'quote', duration: 5000 }
+        );
+        return;
+      }
+
+      const quote = quoteResponse.data?.data || quoteResponse.data;
+      if (!quote) {
+        toast.error('Invalid quote response from server', { id: 'quote' });
+        return;
+      }
+
+      toast.success('Quote received', { id: 'quote' });
+
+      // Step 2: Get wallet address
+      const walletAddress = await getWalletAddressForChain(
+        chainType as ChainType,
+        user,
+        undefined
+      );
+
+      if (!walletAddress) {
+        toast.error('No wallet found for this chain');
+        return;
+      }
+
+      // Step 3: Build transaction
+      toast.loading('Building transaction...', { id: 'build' });
+      const buildResponse = await axios.post(
+        `${backendUrl}/api/v1/trades/build-transaction`,
+        {
+          chain,
+          quote,
+          walletAddress,
+          slippageBps: 50,
+        }
+      );
+
+      const transactionData = buildResponse.data?.data || buildResponse.data;
+      if (!transactionData) {
+        toast.error('Failed to build transaction', { id: 'build' });
+        return;
+      }
+
+      toast.success('Transaction ready', { id: 'build' });
+
+      // Step 4: Execute trade
+      toast.loading('Executing trade...', { id: 'execute' });
+      
+      let result;
+      if (chain === 'solana' || chain === 'base') {
+        result = await executeTrade(chainType as ChainType, user, {
+          swapTransactionBase64: transactionData.transaction,
+          quote,
+        });
+      } else if (chain === 'movement') {
+        result = await executeTrade(chainType as ChainType, user, {
+          transactionData: transactionData,
+          quote,
+        });
+      } else {
+        toast.error('Unsupported chain', { id: 'execute' });
+        return;
+      }
+
+      if (result.success && result.transactionHash) {
+        toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
+        // Refresh trades after successful execution
+        setTimeout(() => {
+          listingService.getTokenTrades(contractAddress, 50).then(setTrades).catch(console.error);
+        }, 2000);
+      } else {
+        toast.error(result.error || 'Trade execution failed', { id: 'execute' });
+      }
+    } catch (error: any) {
+      console.error('Trade error:', error);
+      
+      // Dismiss any pending toasts
+      toast.dismiss('quote');
+      toast.dismiss('build');
+      toast.dismiss('execute');
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Trade failed';
+      
+      // Show user-friendly error message
+      if (errorMessage.includes('Network error') || 
+          errorMessage.includes('ENOTFOUND') || 
+          errorMessage.includes('Cannot connect')) {
+        toast.error(
+          'Cannot connect to trading service. This may be a server connectivity issue. Please try again later or contact support.',
+          { duration: 6000 }
+        );
+      } else {
+        toast.error(errorMessage, { duration: 5000 });
+      }
+    } finally {
+      setTrading(false);
+    }
+  };
 
   // Friendly value formatters
   const fmtMoney = (v: any) => {
@@ -382,15 +562,48 @@ export const ListingDetail: React.FC = () => {
               <h1 className="text-xl font-semibold">{data.symbol || data.name || 'Unknown'}</h1>
               <div className="text-xs text-gray-500 break-all">{data.contractAddress}</div>
             </div>
-            <div className={`text-right text-sm text-gray-700 transition-all duration-300 ${isUpdated ? 'scale-105' : ''}`}>
-              {Number.isFinite(Number(data.priceUsd)) && <div>Price: {fmtMoney(data.priceUsd)}</div>}
-              {Number.isFinite(Number(data.change24h)) && (
-                <div className={Number(data.change24h) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                  24h: {Number(data.change24h).toFixed(2)}%
+            <div className="flex items-center gap-4">
+              <div className={`text-right text-sm text-gray-700 transition-all duration-300 ${isUpdated ? 'scale-105' : ''}`}>
+                {Number.isFinite(Number(data.priceUsd)) && <div>Price: {fmtMoney(data.priceUsd)}</div>}
+                {Number.isFinite(Number(data.change24h)) && (
+                  <div className={Number(data.change24h) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    24h: {Number(data.change24h).toFixed(2)}%
+                  </div>
+                )}
+                {Number.isFinite(Number(data.liquidityUsd)) && <div>Liquidity: {fmtMoney(data.liquidityUsd)}</div>}
+                {Number.isFinite(Number(data.volume24h)) && <div>24h Vol: {fmtMoney(data.volume24h)}</div>}
+              </div>
+              {/* Buy/Sell Buttons */}
+              {authenticated && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!user || !contractAddress) {
+                        toast.error('Please connect your wallet');
+                        return;
+                      }
+                      await handleTrade('BUY');
+                    }}
+                    disabled={trading}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                  >
+                    {trading ? 'Processing...' : 'Buy'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!user || !contractAddress) {
+                        toast.error('Please connect your wallet');
+                        return;
+                      }
+                      await handleTrade('SELL');
+                    }}
+                    disabled={trading}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                  >
+                    {trading ? 'Processing...' : 'Sell'}
+                  </button>
                 </div>
               )}
-              {Number.isFinite(Number(data.liquidityUsd)) && <div>Liquidity: {fmtMoney(data.liquidityUsd)}</div>}
-              {Number.isFinite(Number(data.volume24h)) && <div>24h Vol: {fmtMoney(data.volume24h)}</div>}
             </div>
           </div>
 
@@ -472,37 +685,65 @@ export const ListingDetail: React.FC = () => {
             )}
             {!tradesLoading && !tradesError && trades.length > 0 && (
               <div className="divide-y">
-                {trades.map((trade, idx) => (
+                {trades.map((trade, idx) => {
+                  const type = (trade.type || '').toString().toUpperCase();
+                  const isBuy = type === 'BUY' || type === 'B';
+                  const amount =
+                    trade.amount ??
+                    trade.amountToken ??
+                    0;
+                  const price =
+                    trade.price ??
+                    trade.priceUSD ??
+                    0;
+                  const total =
+                    trade.totalValue ??
+                    (Number(amount) * Number(price));
+                  const hash = trade.txHash || trade.transactionHash || '';
+                  const maker = trade.makerAddress || trade.swapper || '';
+
+                  return (
                   <div
-                    key={trade.transactionHash || idx}
+                    key={hash || idx}
                     className="py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
                   >
                     <div className="flex items-center gap-3">
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded ${
-                          trade.type === 'buy'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
+                          isBuy
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-rose-100 text-rose-700'
                         }`}
                       >
-                        {trade.type === 'buy' ? 'Buy' : 'Sell'}
+                        {isBuy ? 'Buy' : 'Sell'}
                       </span>
                       <div className="text-sm text-gray-700">
-                        {trade.amountToken} token @ {trade.amountMOVE} MOVE
-                        {trade.priceUSD ? ` ($${trade.priceUSD})` : ''}
+                        {Number(amount).toFixed(4)} @ {Number(price).toFixed(6)}
+                        {total ? ` ($${Number(total).toFixed(4)})` : ''}
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 flex flex-col md:items-end">
-                      <span>Swapper: {formatAddress(trade.swapper || '', 6, 6)}</span>
-                      {trade.transactionHash && (
-                        <span>Tx: {formatAddress(trade.transactionHash, 6, 6)}</span>
+                      <span>Maker: {formatAddress(maker || '', 6, 6)}</span>
+                      {hash && (
+                        <a
+                          href={
+                            isMovement
+                              ? `https://explorer.movementnetwork.xyz/txn/${hash}?network=bardock+testnet`
+                              : `https://solscan.io/tx/${hash}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          Tx: {formatAddress(hash, 6, 6)}
+                        </a>
                       )}
                       {trade.timestamp && (
                         <span>{new Date(trade.timestamp).toLocaleString()}</span>
                       )}
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             )}
           </div>
