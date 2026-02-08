@@ -325,10 +325,17 @@ export async function getWalletAddressForChain(
     if (!wallets) {
       throw new Error('Wallets array required for Solana');
     }
-    // Try multiple ways to find Solana wallet
+    // Privy Solana wallet detection - check chainType first
     let solanaWallet = wallets.find(
-      (w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet'
+      (w) => w.chainType === 'solana'
     );
+    
+    // Fallback: check by chainId
+    if (!solanaWallet) {
+      solanaWallet = wallets.find(
+        (w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet'
+      );
+    }
     
     // Fallback: check by walletClientType or coinType
     if (!solanaWallet) {
@@ -347,27 +354,40 @@ export async function getWalletAddressForChain(
     }
     
     if (!solanaWallet) {
-      throw new Error('No Solana wallet found. Please connect a Solana wallet in Privy.');
+      throw new Error('No Solana wallet found. Please enable Solana in Privy Dashboard (Embedded Wallets -> Chains) and connect a Solana wallet.');
     }
     return solanaWallet.address;
   } else if (chain === 'BASE') {
-    // Base uses EVM-compatible wallets (Ethereum wallets)
+    // Base uses Privy Ethereum wallet (EVM-compatible)
+    // User must switch to Chain ID 8453 before signing
     if (!wallets) {
       throw new Error('Wallets array required for Base');
     }
-    const baseWallet = wallets.find(
-      (w) => w.chainId === 'eip155:8453' || w.chainId === 'eip155:84532' // Base mainnet or testnet
+    
+    // Check for Ethereum wallet by chainType (primary method)
+    let baseWallet = wallets.find(
+      (w) => w.chainType === 'ethereum'
     );
+    
+    // Fallback: check by chainId for Base (8453) or Ethereum (1)
     if (!baseWallet) {
-      // Fallback to any Ethereum wallet (Base is EVM-compatible)
-      const ethWallet = wallets.find(
+      baseWallet = wallets.find(
+        (w) => w.chainId === 'eip155:8453' || w.chainId === 'eip155:1' || w.chainId === 'eip155:84532'
+      );
+    }
+    
+    // Last fallback: any EVM wallet
+    if (!baseWallet) {
+      baseWallet = wallets.find(
         (w) => w.chainId?.startsWith('eip155:') || w.walletClientType === 'privy'
       );
-      if (ethWallet) {
-        return ethWallet.address;
-      }
-      throw new Error('No Base/Ethereum wallet found');
     }
+    
+    if (!baseWallet) {
+      throw new Error('No Base/Ethereum wallet found. Please connect an Ethereum wallet in Privy.');
+    }
+    
+    // Note: Frontend should ensure wallet is switched to Chain ID 8453 before signing
     return baseWallet.address;
   } else if (chain === 'MOVEMENT') {
     // For Movement, get from Privy or backend

@@ -301,14 +301,16 @@ export const ListingDetail: React.FC = () => {
           ? contractAddress
           : 'So11111111111111111111111111111111111111112'; // SOL
       } else if (chain === 'base') {
-        // For Base: Use WETH (Wrapped ETH) as input
-        // WETH on Base: 0x4200000000000000000000000000000000000006
+        // For Base: Use native ETH sentinel address (0xeeee...)
+        // 1inch v6.0 requires 0xeeee... for native ETH, not WETH
+        // WETH requires allowance/permit which fails if user only has raw ETH
+        const NATIVE_ETH_ADDRESS = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
         inputToken = tradeType === 'BUY' 
-          ? '0x4200000000000000000000000000000000000006' // WETH on Base
+          ? NATIVE_ETH_ADDRESS // Native ETH on Base
           : contractAddress;
         outputToken = tradeType === 'BUY'
           ? contractAddress
-          : '0x4200000000000000000000000000000000000006'; // WETH on Base
+          : NATIVE_ETH_ADDRESS; // Native ETH on Base
       } else if (chain === 'movement') {
         // For Movement: Use MOVE or USDC as input
         inputToken = tradeType === 'BUY'
@@ -580,15 +582,15 @@ export const ListingDetail: React.FC = () => {
               <div className="text-xs text-gray-500 break-all">{data.contractAddress}</div>
             </div>
             <div className="flex items-center gap-4">
-              <div className={`text-right text-sm text-gray-700 transition-all duration-300 ${isUpdated ? 'scale-105' : ''}`}>
-                {Number.isFinite(Number(data.priceUsd)) && <div>Price: {fmtMoney(data.priceUsd)}</div>}
-                {Number.isFinite(Number(data.change24h)) && (
-                  <div className={Number(data.change24h) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    24h: {Number(data.change24h).toFixed(2)}%
-                  </div>
-                )}
-                {Number.isFinite(Number(data.liquidityUsd)) && <div>Liquidity: {fmtMoney(data.liquidityUsd)}</div>}
-                {Number.isFinite(Number(data.volume24h)) && <div>24h Vol: {fmtMoney(data.volume24h)}</div>}
+            <div className={`text-right text-sm text-gray-700 transition-all duration-300 ${isUpdated ? 'scale-105' : ''}`}>
+              {Number.isFinite(Number(data.priceUsd)) && <div>Price: {fmtMoney(data.priceUsd)}</div>}
+              {Number.isFinite(Number(data.change24h)) && (
+                <div className={Number(data.change24h) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                  24h: {Number(data.change24h).toFixed(2)}%
+                </div>
+              )}
+              {Number.isFinite(Number(data.liquidityUsd)) && <div>Liquidity: {fmtMoney(data.liquidityUsd)}</div>}
+              {Number.isFinite(Number(data.volume24h)) && <div>24h Vol: {fmtMoney(data.volume24h)}</div>}
               </div>
               {/* Buy/Sell Buttons */}
               {authenticated && (
