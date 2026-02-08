@@ -53,7 +53,7 @@ export function useWalletRouter() {
   };
 
   const getBaseWallet = () => {
-    let baseWallet = wallets.find((w) => w.chainType === 'ethereum');
+    let baseWallet = wallets.find((w) => (w as any).chainType === 'ethereum');
     if (!baseWallet) {
       baseWallet = wallets.find(
         (w) =>
@@ -312,7 +312,7 @@ export function useWalletRouter() {
   ): Promise<WalletRouterResult> => {
     try {
       toast.loading('Submitting transaction...', { id: 'base-send' });
-      const txHash = await sendBaseTransaction(transaction);
+      const submittedTxHash = await sendBaseTransaction(transaction);
 
       const token = localStorage.getItem('cto_auth_token');
       if (!token) {
@@ -324,7 +324,7 @@ export function useWalletRouter() {
         {
           chain: 'base',
           quote,
-          signedTransaction: txHash,
+          signedTransaction: submittedTxHash,
         },
         {
           headers: {
@@ -336,12 +336,12 @@ export function useWalletRouter() {
 
       const payload = response.data;
       const data = payload?.data ?? payload;
-      const txHash = data?.txHash || data?.transactionHash;
-      if (txHash) {
+      const resultTxHash = data?.txHash || data?.transactionHash;
+      if (resultTxHash) {
         toast.success('Trade executed successfully!', { id: 'base-send' });
         return {
           success: true,
-          transactionHash: txHash,
+          transactionHash: resultTxHash,
         };
       }
 
@@ -372,12 +372,6 @@ export function useWalletRouter() {
         success: false,
         error: 'Solana trading is disabled. This chain is read-only for now.',
       };
-    }
-    if (chain === 'SOLANA') {
-      if (!params.transaction || typeof params.transaction !== 'string') {
-        throw new Error('transaction is required for Solana trades');
-      }
-      return executeSolanaTrade(params.transaction, params.quote);
     }
     if (chain === 'BASE') {
       if (!params.transaction || typeof params.transaction !== 'object') {
@@ -417,7 +411,7 @@ export async function getWalletAddressForChain(
     }
     // Privy Solana wallet detection - check chainType first
     let solanaWallet = wallets.find(
-      (w) => w.chainType === 'solana'
+      (w) => (w as any).chainType === 'solana'
     );
     
     // Fallback: check by chainId
@@ -456,7 +450,7 @@ export async function getWalletAddressForChain(
     
     // Check for Ethereum wallet by chainType (primary method)
     let baseWallet = wallets.find(
-      (w) => w.chainType === 'ethereum'
+      (w) => (w as any).chainType === 'ethereum'
     );
     
     // Fallback: check by chainId for Base (8453) or Ethereum (1)

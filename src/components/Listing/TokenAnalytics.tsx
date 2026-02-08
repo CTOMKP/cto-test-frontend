@@ -74,11 +74,18 @@ export const TokenAnalytics: React.FC<TokenAnalyticsProps> = ({
       }
 
       // Process chart data
-      if (chartRes.status === 'fulfilled' && chartRes.value.data?.data) {
-        console.log('Chart API Response:', chartRes.value.data);
-        console.log('Chart Data Array:', chartRes.value.data.data);
-        console.log('Chart Data Length:', chartRes.value.data.data?.length);
-        setChartData(chartRes.value.data.data);
+      if (chartRes.status === 'fulfilled') {
+        const chartPayload = chartRes.value.data;
+        const chartArray =
+          chartPayload?.data?.data ||
+          chartPayload?.data ||
+          chartPayload?.items ||
+          [];
+
+        console.log('Chart API Response:', chartPayload);
+        console.log('Chart Data Array:', chartArray);
+        console.log('Chart Data Length:', chartArray?.length);
+        setChartData(chartArray);
       } else {
         console.log('Chart request failed or no data:', chartRes);
       }

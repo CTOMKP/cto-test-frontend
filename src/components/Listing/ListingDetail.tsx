@@ -361,17 +361,15 @@ export const ListingDetail: React.FC = () => {
 
       // Extract quote from response - backend returns {success: true, data: quote}
       // axios automatically parses JSON, so quoteResponse.data is the response body
-      let quote = quoteResponse.data;
-      
-      // Handle nested structure: {success: true, data: quote}
-      if (quote?.data && quote.success) {
-        quote = quote.data;
+      const payload = quoteResponse.data;
+      if (payload?.success === false || payload?.code) {
+        toast.error(payload?.message || 'Failed to get quote. Please try again.', { id: 'quote' });
+        return;
       }
-      
-      // Also handle direct quote object
-      if (!quote || (typeof quote === 'object' && quote.success && !quote.inputMint)) {
-        // If still wrapped, try to extract
-        quote = quote?.data || quote;
+
+      let quote = payload?.data ?? payload;
+      if (quote?.data && !quote?.inputMint) {
+        quote = quote.data;
       }
       
       if (!quote) {
