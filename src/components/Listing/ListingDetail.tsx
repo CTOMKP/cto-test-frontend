@@ -356,6 +356,13 @@ export const ListingDetail: React.FC = () => {
         return;
       }
 
+      // Validate quote structure before proceeding
+      if (!quote.inputMint || !quote.outputMint || !quote.inAmount) {
+        console.error('Invalid quote structure:', quote);
+        toast.error('Quote missing required fields. Please try again.', { id: 'quote' });
+        return;
+      }
+
       toast.success('Quote received', { id: 'quote' });
 
       // Step 2: Get wallet address
