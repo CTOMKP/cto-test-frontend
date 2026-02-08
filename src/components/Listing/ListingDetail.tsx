@@ -292,14 +292,23 @@ export const ListingDetail: React.FC = () => {
       let inputToken: string;
       let outputToken: string = contractAddress;
 
-      if (chain === 'solana' || chain === 'base') {
-        // For Solana/Base: Use SOL or USDC as input
+      if (chain === 'solana') {
+        // For Solana: Use SOL as input
         inputToken = tradeType === 'BUY' 
           ? 'So11111111111111111111111111111111111111112' // SOL
           : contractAddress;
         outputToken = tradeType === 'BUY'
           ? contractAddress
           : 'So11111111111111111111111111111111111111112'; // SOL
+      } else if (chain === 'base') {
+        // For Base: Use WETH (Wrapped ETH) as input
+        // WETH on Base: 0x4200000000000000000000000000000000000006
+        inputToken = tradeType === 'BUY' 
+          ? '0x4200000000000000000000000000000000000006' // WETH on Base
+          : contractAddress;
+        outputToken = tradeType === 'BUY'
+          ? contractAddress
+          : '0x4200000000000000000000000000000000000006'; // WETH on Base
       } else if (chain === 'movement') {
         // For Movement: Use MOVE or USDC as input
         inputToken = tradeType === 'BUY'
