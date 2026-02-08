@@ -352,15 +352,38 @@ export const ListingDetail: React.FC = () => {
         return;
       }
 
-      const quote = quoteResponse.data?.data || quoteResponse.data;
+      // Extract quote from response - backend returns {success: true, data: quote}
+      // axios automatically parses JSON, so quoteResponse.data is the response body
+      let quote = quoteResponse.data;
+      
+      // Handle nested structure: {success: true, data: quote}
+      if (quote?.data && quote.success) {
+        quote = quote.data;
+      }
+      
+      // Also handle direct quote object
+      if (!quote || (typeof quote === 'object' && quote.success && !quote.inputMint)) {
+        // If still wrapped, try to extract
+        quote = quote?.data || quote;
+      }
+      
       if (!quote) {
+        console.error('No quote data found in response:', quoteResponse.data);
         toast.error('Invalid quote response from server', { id: 'quote' });
         return;
       }
 
       // Validate quote structure before proceeding
+      // Quote should have: inputMint, outputMint, inAmount
       if (!quote.inputMint || !quote.outputMint || !quote.inAmount) {
-        console.error('Invalid quote structure:', quote);
+        console.error('Invalid quote structure:', {
+          fullResponse: quoteResponse.data,
+          extractedQuote: quote,
+          hasInputMint: !!quote.inputMint,
+          hasOutputMint: !!quote.outputMint,
+          hasInAmount: !!quote.inAmount,
+          quoteKeys: Object.keys(quote || {}),
+        });
         toast.error('Quote missing required fields. Please try again.', { id: 'quote' });
         return;
       }
