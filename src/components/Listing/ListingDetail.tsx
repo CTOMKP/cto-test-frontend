@@ -391,15 +391,45 @@ export const ListingDetail: React.FC = () => {
       toast.success('Quote received', { id: 'quote' });
 
       // Step 2: Get wallet address
-      const walletAddress = await getWalletAddressForChain(
-        chainType as ChainType,
-        user,
-        wallets
-      );
+      let walletAddress: string;
+      try {
+        walletAddress = await getWalletAddressForChain(
+          chainType as ChainType,
+          user,
+          wallets
+        );
 
-      if (!walletAddress) {
-        toast.error('No wallet found for this chain');
+        if (!walletAddress) {
+          toast.error('No wallet found for this chain');
+          return;
+        }
+      } catch (walletError: any) {
+        // Handle missing wallet gracefully
+        const errorMessage = walletError.message || 'Wallet error';
+        
+        if (chain === 'solana' && errorMessage.includes('Solana')) {
+          toast.error(
+            'Solana wallet not found. Please enable Solana in Privy Dashboard (Embedded Wallets -> Chains) and connect a Solana wallet.',
+            { id: 'wallet', duration: 8000 }
+          );
+        } else if (chain === 'base' && errorMessage.includes('Base') || errorMessage.includes('Ethereum')) {
+          toast.error(
+            'Ethereum wallet not found. Please connect an Ethereum wallet in Privy. The wallet will be used for Base chain (Chain ID 8453).',
+            { id: 'wallet', duration: 8000 }
+          );
+        } else {
+          toast.error(`Wallet error: ${errorMessage}`, { id: 'wallet' });
+        }
         return;
+      }
+      
+      // For Base chain, ensure wallet is on Base network (Chain ID 8453)
+      // Note: Privy should handle this automatically, but we can add a reminder
+      if (chain === 'base') {
+        // Check if wallet is on Base network
+        // Privy wallets are EVM-compatible, so Ethereum wallet works on Base
+        // The user may need to switch network manually in their wallet
+        console.log('Base chain trade: Using Ethereum wallet for Base (Chain ID 8453)');
       }
 
       // Step 3: Build transaction
