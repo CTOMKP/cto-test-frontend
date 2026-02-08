@@ -426,8 +426,10 @@ export const ListingDetail: React.FC = () => {
         
         console.log('Base chain trade: Using Ethereum wallet for Base (Chain ID 8453)');
 
-        // Step 3: Build transaction (Base only)
-        toast.loading('Building transaction...', { id: 'build' });
+      // Step 3: Build transaction (Base only)
+      toast.loading('Building transaction...', { id: 'build' });
+      let transactionData: any;
+      try {
         const buildResponse = await axios.post(
           `${backendUrl}/api/v1/trades/build-transaction`,
           {
@@ -438,11 +440,27 @@ export const ListingDetail: React.FC = () => {
           }
         );
 
-        const transactionData = buildResponse.data?.data || buildResponse.data;
-        if (!transactionData) {
-          toast.error('Failed to build transaction', { id: 'build' });
+        const payload = buildResponse.data;
+        if (payload?.success === false || payload?.code) {
+          toast.error(payload?.message || 'Failed to build transaction', { id: 'build' });
           return;
         }
+
+        transactionData = payload?.data ?? payload;
+      } catch (buildError: any) {
+        const message =
+          buildError?.response?.data?.message ||
+          buildError?.response?.data?.error ||
+          buildError?.message ||
+          'Failed to build transaction';
+        toast.error(message, { id: 'build' });
+        return;
+      }
+
+      if (!transactionData?.transaction) {
+        toast.error('Failed to build transaction: missing transaction payload', { id: 'build' });
+        return;
+      }
 
         // Check if this is an approval transaction (Base token sells)
         if (transactionData.isApproval && chain === 'base') {
@@ -473,11 +491,12 @@ export const ListingDetail: React.FC = () => {
             }
           );
 
-          const swapTransactionData = swapBuildResponse.data?.data || swapBuildResponse.data;
-          if (!swapTransactionData || swapTransactionData.isApproval) {
-            toast.error('Failed to build swap transaction after approval', { id: 'build' });
-            return;
-          }
+        const swapPayload = swapBuildResponse.data;
+        const swapTransactionData = swapPayload?.data ?? swapPayload;
+        if (!swapTransactionData || swapTransactionData.isApproval || !swapTransactionData?.transaction) {
+          toast.error('Failed to build swap transaction after approval', { id: 'build' });
+          return;
+        }
 
           Object.assign(transactionData, swapTransactionData);
           toast.success('Swap transaction ready', { id: 'build' });
