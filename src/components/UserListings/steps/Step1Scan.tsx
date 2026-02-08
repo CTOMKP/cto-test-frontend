@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Zap } from 'lucide-react';
 import userListingsService, { ScanResult } from '../../../services/userListingsService';
 import { getTierColor, getTierIcon, getRiskScoreColor, formatNumber, compactNumber } from '../../../utils/listingHelpers';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 interface Step1ScanProps {
   selectedNetwork: string;
@@ -40,6 +41,7 @@ export default function Step1Scan({
   onContinue,
 }: Step1ScanProps) {
   const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -47,6 +49,18 @@ export default function Step1Scan({
   const [scanResults, setScanResults] = useState<ScanResult | null>(null);
   const [canProceed, setCanProceed] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+
+  const createdDate = useMemo(() => {
+    const metadata = scanResults?.metadata;
+    if (!metadata) return null;
+    if (metadata.creation_date) {
+      return new Date(metadata.creation_date);
+    }
+    if (typeof metadata.project_age_days === 'number') {
+      return new Date(Date.now() - metadata.project_age_days * 24 * 60 * 60 * 1000);
+    }
+    return null;
+  }, [scanResults?.metadata]);
 
   const startScan = async () => {
     if (!contractAddress.trim()) {
@@ -128,6 +142,15 @@ export default function Step1Scan({
       <h2 className="font-bold text-[18px] text-center mb-2">
         Scan Token Contract
       </h2>
+      <div className="flex justify-start mt-2">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="text-xs text-white/70 hover:text-white underline"
+        >
+          Back
+        </button>
+      </div>
       <p className="text-sm text-white/70 text-center">
         Select network & paste contract address to begin
       </p>
@@ -325,8 +348,8 @@ export default function Step1Scan({
                         <p>
                           <span className="text-white/70">Created:</span>{' '}
                           <span>
-                            {scanResults.metadata.creation_date
-                              ? new Date(scanResults.metadata.creation_date).toLocaleDateString()
+                            {createdDate
+                              ? createdDate.toLocaleDateString()
                               : 'N/A'}
                           </span>
                         </p>

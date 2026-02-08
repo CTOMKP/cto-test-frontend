@@ -22,6 +22,20 @@ interface UserListing {
   vettingScore: number;
   createdAt: string;
   updatedAt: string;
+  scanMetadata?: {
+    token_price?: number;
+    market_cap?: number;
+    lp_amount_usd?: number;
+    volume_24h?: number;
+    holder_count?: number;
+  } | null;
+  metadata?: {
+    token_price?: number;
+    market_cap?: number;
+    lp_amount_usd?: number;
+    volume_24h?: number;
+    holder_count?: number;
+  } | null;
 }
 
 export const UserListingDetail: React.FC = () => {
@@ -97,6 +111,26 @@ export const UserListingDetail: React.FC = () => {
     // Otherwise use normalized URL (might already be CloudFront or external)
     return normalizeImageUrl(bannerUrl) || bannerUrl;
   }, [data]);
+
+  const scanMetadata = useMemo(() => {
+    return (data as any)?.scanMetadata ?? (data as any)?.metadata ?? null;
+  }, [data]);
+
+  const scanPriceUsd = Number.isFinite(Number(scanMetadata?.token_price))
+    ? Number(scanMetadata?.token_price)
+    : undefined;
+  const scanMarketCap = Number.isFinite(Number(scanMetadata?.market_cap))
+    ? Number(scanMetadata?.market_cap)
+    : undefined;
+  const scanLiquidityUsd = Number.isFinite(Number(scanMetadata?.lp_amount_usd))
+    ? Number(scanMetadata?.lp_amount_usd)
+    : undefined;
+  const scanVolume24h = Number.isFinite(Number(scanMetadata?.volume_24h))
+    ? Number(scanMetadata?.volume_24h)
+    : undefined;
+  const scanHolders = Number.isFinite(Number(scanMetadata?.holder_count))
+    ? Number(scanMetadata?.holder_count)
+    : undefined;
 
   if (loading) {
     return (
@@ -186,6 +220,11 @@ export const UserListingDetail: React.FC = () => {
           <TokenAnalytics
             contractAddress={data.contractAddr}
             chain={data.chain}
+            priceUsd={scanPriceUsd}
+            marketCap={scanMarketCap}
+            liquidityUsd={scanLiquidityUsd}
+            volume24h={scanVolume24h}
+            holders={scanHolders}
           />
         </div>
       </main>

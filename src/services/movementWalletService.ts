@@ -30,6 +30,9 @@ export interface WalletTransaction {
   txType: 'CREDIT' | 'DEBIT' | 'TRANSFER';
   amount: string;
   tokenSymbol: string;
+  tokenAddress?: string;
+  fromAddress?: string;
+  toAddress?: string;
   status: string;
   description: string;
   createdAt: string;
@@ -80,4 +83,3 @@ export const movementWalletService = {
     return response.data?.data?.transactions || response.data?.transactions || [];
   }
 };
-

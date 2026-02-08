@@ -9,6 +9,7 @@ interface TokenAnalyticsProps {
   marketCap?: number;
   liquidityUsd?: number;
   volume24h?: number;
+  holders?: number;
 }
 
 interface HolderData {
@@ -41,6 +42,7 @@ export const TokenAnalytics: React.FC<TokenAnalyticsProps> = ({
   marketCap,
   liquidityUsd,
   volume24h,
+  holders,
 }) => {
   const [holderData, setHolderData] = useState<HolderData | null>(null);
   const [transferData, setTransferData] = useState<TransferAnalytics | null>(null);
@@ -102,6 +104,8 @@ export const TokenAnalytics: React.FC<TokenAnalyticsProps> = ({
     if (holders >= 1e3) return `${(holders / 1e3).toFixed(2)}K`;
     return holders.toString();
   };
+
+  const resolvedHolders = holderData?.holders ?? (Number.isFinite(Number(holders)) ? Number(holders) : null);
 
   return (
     <div className="w-full">
@@ -169,7 +173,7 @@ export const TokenAnalytics: React.FC<TokenAnalyticsProps> = ({
                 {loading ? (
                   <span className="text-gray-500">Loading...</span>
                 ) : (
-                  formatHolders(holderData?.holders || null)
+                  formatHolders(resolvedHolders)
                 )}
               </div>
             </div>

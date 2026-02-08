@@ -2,13 +2,18 @@ import axios from 'axios';
 import { getBackendUrl } from '../utils/apiConfig';
 
 export interface TradeEvent {
-  type: 'buy' | 'sell';
-  swapper: string;
-  amountMOVE: number;
-  amountToken: number;
+  type: 'BUY' | 'SELL' | 'buy' | 'sell';
+  txHash?: string;
+  transactionHash?: string;
+  timestamp: string | number | Date;
+  price?: number;
+  amount?: number;
+  totalValue?: number;
+  makerAddress?: string;
+  swapper?: string;
+  amountMOVE?: number;
+  amountToken?: number;
   priceUSD?: number | null;
-  timestamp: string;
-  transactionHash: string;
 }
 
 export interface ListingQuery {
@@ -55,7 +60,7 @@ export const listingService = {
     const res = await axios.get(
       `${backendUrl}/api/v1/tokens/${contractAddress}/trades?limit=${limit}`
     );
-    return res.data;
+    return res.data?.data || res.data || [];
   },
 };
 

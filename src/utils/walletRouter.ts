@@ -3,17 +3,16 @@
  * Routes wallet operations based on chain (SOLANA vs MOVEMENT)
  * 
  * Handles the hybrid wallet system:
- * - SOLANA: Privy-managed Solana wallets (signTransaction)
- * - MOVEMENT: Aptos SDK + Privy signRawHash (APTOS_EMBEDDED wallets)
+ * - SOLANA: Privy-managed Solana wallets (signTransaction) [trading disabled for now]
+ * - MOVEMENT: Server-side signing via backend
  */
 
 import { useWallets } from '@privy-io/react-auth';
-import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { VersionedTransaction, Connection, PublicKey } from '@solana/web3.js';
 import { getMovementWallet } from '../lib/movement-wallet';
-import { sendMovementTransaction } from '../lib/movement-wallet';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { isHex, toHex } from 'viem';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
 
@@ -22,10 +21,7 @@ export type ChainType = 'SOLANA' | 'MOVEMENT' | 'BASE';
 export interface TradeExecutionParams {
   chain: ChainType;
   quote: any; // Jupiter or Panora quote response
-  signedTransaction?: string; // For Solana: base64 signed transaction
-  rawTxn?: any; // For Movement: transaction object
-  signature?: string; // For Movement: signature
-  publicKey?: string; // For Movement: public key
+  signedTransaction?: string; // For Solana: base64 signed transaction, for Base: tx hash
 }
 
 export interface WalletRouterResult {
@@ -40,7 +36,6 @@ export interface WalletRouterResult {
  */
 export function useWalletRouter() {
   const { wallets } = useWallets();
-  const { signRawHash } = useSignRawHash();
 
   /**
    * Get Solana wallet from Privy
@@ -55,6 +50,65 @@ export function useWalletRouter() {
     }
     
     return solanaWallet;
+  };
+
+  const getBaseWallet = () => {
+    let baseWallet = wallets.find((w) => w.chainType === 'ethereum');
+    if (!baseWallet) {
+      baseWallet = wallets.find(
+        (w) =>
+          w.chainId === 'eip155:8453' ||
+          w.chainId === 'eip155:1' ||
+          w.chainId === 'eip155:84532'
+      );
+    }
+    if (!baseWallet) {
+      baseWallet = wallets.find(
+        (w) => w.chainId?.startsWith('eip155:') || w.walletClientType === 'privy'
+      );
+    }
+    if (!baseWallet) {
+      throw new Error('No Base/Ethereum wallet found. Please connect an Ethereum wallet in Privy.');
+    }
+    return baseWallet;
+  };
+
+  const normalizeHex = (value?: string) => {
+    if (!value) return undefined;
+    if (isHex(value)) return value;
+    try {
+      return toHex(BigInt(value));
+    } catch {
+      return undefined;
+    }
+  };
+
+  const sendBaseTransaction = async (transaction: any): Promise<string> => {
+    const baseWallet = getBaseWallet();
+    if (!transaction?.to || !transaction?.data) {
+      throw new Error('Invalid Base transaction data');
+    }
+
+    const provider = await baseWallet.getEthereumProvider();
+    const txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: baseWallet.address,
+          to: transaction.to,
+          data: transaction.data,
+          value: normalizeHex(transaction.value) || '0x0',
+          gas: normalizeHex(transaction.gas),
+          gasPrice: normalizeHex(transaction.gasPrice),
+        },
+      ],
+    });
+
+    if (!txHash || typeof txHash !== 'string') {
+      throw new Error('Failed to send Base transaction');
+    }
+
+    return txHash;
   };
 
   /**
@@ -177,17 +231,19 @@ export function useWalletRouter() {
         }
       );
 
-      const result = response.data?.data || response.data;
+      const payload = response.data;
+      const data = payload?.data ?? payload;
+      const txHash = data?.txHash || data?.transactionHash;
       
-      if (result.success && result.transactionHash) {
+      if (txHash) {
         toast.success('Trade executed successfully!', { id: 'solana-sign' });
         return {
           success: true,
-          transactionHash: result.transactionHash,
+          transactionHash: txHash,
         };
       }
 
-      throw new Error(result.error || 'Trade execution failed');
+      throw new Error(payload?.error || data?.error || 'Trade execution failed');
     } catch (error: any) {
       toast.error(error.message || 'Failed to execute Solana trade', { id: 'solana-sign' });
       return {
@@ -198,33 +254,12 @@ export function useWalletRouter() {
   };
 
   /**
-   * Sign and execute a Movement trade
+   * Execute a Movement trade (server-side signing)
    */
   const executeMovementTrade = async (
-    privyUser: any,
-    transactionData: {
-      rawTxn: any;
-      message: string;
-      payload: any;
-    },
     quote: any
   ): Promise<WalletRouterResult> => {
     try {
-      // Get Movement wallet
-      const { address, publicKey } = await getMovementWalletAddress(privyUser);
-
-      // Sign with Privy signRawHash
-      toast.loading('Signing Movement transaction...', { id: 'movement-sign' });
-      
-      const { signature } = await signRawHash({
-        address,
-        chainType: 'aptos',
-        hash: transactionData.message.startsWith('0x')
-          ? (transactionData.message as `0x${string}`)
-          : (`0x${transactionData.message}` as `0x${string}`),
-      });
-
-      // Send to backend for execution
       toast.loading('Submitting transaction...', { id: 'movement-broadcast' });
       const token = localStorage.getItem('cto_auth_token');
       if (!token) {
@@ -236,9 +271,6 @@ export function useWalletRouter() {
         {
           chain: 'movement',
           quote,
-          rawTxn: transactionData.rawTxn,
-          signature,
-          publicKey,
         },
         {
           headers: {
@@ -248,19 +280,74 @@ export function useWalletRouter() {
         }
       );
 
-      const result = response.data?.data || response.data;
+      const payload = response.data;
+      const data = payload?.data ?? payload;
+      const txHash = data?.txHash || data?.transactionHash;
       
-      if (result.success && result.transactionHash) {
-        toast.success('Trade executed successfully!', { id: 'movement-sign' });
+      if (txHash) {
+        toast.success('Trade executed successfully!', { id: 'movement-broadcast' });
         return {
           success: true,
-          transactionHash: result.transactionHash,
+          transactionHash: txHash,
         };
       }
 
-      throw new Error(result.error || 'Trade execution failed');
+      throw new Error(payload?.error || data?.error || 'Trade execution failed');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to execute Movement trade', { id: 'movement-sign' });
+      toast.error(error.message || 'Failed to execute Movement trade', { id: 'movement-broadcast' });
+      return {
+        success: false,
+        error: error.message || 'Unknown error',
+      };
+    }
+  };
+
+  /**
+   * Execute a Base trade (EVM)
+   * Sends tx via wallet, then records trade via backend using tx hash.
+   */
+  const executeBaseTrade = async (
+    transaction: any,
+    quote: any
+  ): Promise<WalletRouterResult> => {
+    try {
+      toast.loading('Submitting transaction...', { id: 'base-send' });
+      const txHash = await sendBaseTransaction(transaction);
+
+      const token = localStorage.getItem('cto_auth_token');
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await axios.post(
+        `${API_BASE}/api/v1/trades/execute`,
+        {
+          chain: 'base',
+          quote,
+          signedTransaction: txHash,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const payload = response.data;
+      const data = payload?.data ?? payload;
+      const txHash = data?.txHash || data?.transactionHash;
+      if (txHash) {
+        toast.success('Trade executed successfully!', { id: 'base-send' });
+        return {
+          success: true,
+          transactionHash: txHash,
+        };
+      }
+
+      throw new Error(payload?.error || data?.error || 'Trade execution failed');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to execute Base trade', { id: 'base-send' });
       return {
         success: false,
         error: error.message || 'Unknown error',
@@ -275,29 +362,30 @@ export function useWalletRouter() {
     chain: ChainType,
     privyUser: any,
     params: {
-      // For Solana/Base: base64 transaction from Jupiter
-      swapTransactionBase64?: string;
-      // For Movement: transaction data from backend
-      transactionData?: {
-        rawTxn: any;
-        message: string;
-        payload: any;
-      };
+      // For Solana: base64 transaction from Jupiter
+      transaction?: any;
       quote: any;
     }
   ): Promise<WalletRouterResult> => {
-    if (chain === 'SOLANA' || chain === 'BASE') {
-      if (!params.swapTransactionBase64) {
-        throw new Error('swapTransactionBase64 is required for Solana/Base trades');
+    if (chain === 'SOLANA') {
+      return {
+        success: false,
+        error: 'Solana trading is disabled. This chain is read-only for now.',
+      };
+    }
+    if (chain === 'SOLANA') {
+      if (!params.transaction || typeof params.transaction !== 'string') {
+        throw new Error('transaction is required for Solana trades');
       }
-      // Base uses EVM-compatible transactions, but for now we'll use Solana flow
-      // TODO: Add proper EVM transaction signing for Base
-      return executeSolanaTrade(params.swapTransactionBase64, params.quote);
+      return executeSolanaTrade(params.transaction, params.quote);
+    }
+    if (chain === 'BASE') {
+      if (!params.transaction || typeof params.transaction !== 'object') {
+        throw new Error('transaction is required for Base trades');
+      }
+      return executeBaseTrade(params.transaction, params.quote);
     } else if (chain === 'MOVEMENT') {
-      if (!params.transactionData) {
-        throw new Error('transactionData is required for Movement trades');
-      }
-      return executeMovementTrade(privyUser, params.transactionData, params.quote);
+      return executeMovementTrade(params.quote);
     } else {
       throw new Error(`Unsupported chain: ${chain}`);
     }
@@ -306,8 +394,10 @@ export function useWalletRouter() {
   return {
     getSolanaWallet,
     getMovementWalletAddress,
+    sendBaseTransaction,
     executeSolanaTrade,
     executeMovementTrade,
+    executeBaseTrade,
     executeTrade,
   };
 }

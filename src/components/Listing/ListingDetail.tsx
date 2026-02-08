@@ -41,7 +41,7 @@ export const ListingDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user, authenticated } = usePrivy();
   const { wallets } = useWallets();
-  const { executeTrade } = useWalletRouter();
+  const { executeTrade, sendBaseTransaction } = useWalletRouter();
   const [data, setData] = useState<PublicListing | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +65,8 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
+  const isSolanaChain = chainType === 'SOLANA';
+  const isBaseChain = chainType === 'BASE';
 
   // Function to ensure complete data with consistent fallbacks
   const ensureCompleteData = (original: PublicListing): Partial<PublicListing> => {
@@ -284,6 +286,11 @@ export const ListingDetail: React.FC = () => {
       return;
     }
 
+    if (isSolanaChain) {
+      toast.error('Solana trading is coming soon.');
+      return;
+    }
+
     try {
       setTrading(true);
 
@@ -390,89 +397,40 @@ export const ListingDetail: React.FC = () => {
 
       toast.success('Quote received', { id: 'quote' });
 
-      // Step 2: Get wallet address
-      let walletAddress: string;
-      try {
-        walletAddress = await getWalletAddressForChain(
-          chainType as ChainType,
-          user,
-          wallets
-        );
+      let walletAddress: string | undefined;
 
-        if (!walletAddress) {
-          toast.error('No wallet found for this chain');
-          return;
-        }
-      } catch (walletError: any) {
-        // Handle missing wallet gracefully
-        const errorMessage = walletError.message || 'Wallet error';
-        
-        if (chain === 'solana' && errorMessage.includes('Solana')) {
-          toast.error(
-            'Solana wallet not found. Please enable Solana in Privy Dashboard (Embedded Wallets -> Chains) and connect a Solana wallet.',
-            { id: 'wallet', duration: 8000 }
-          );
-        } else if (chain === 'base' && errorMessage.includes('Base') || errorMessage.includes('Ethereum')) {
-          toast.error(
-            'Ethereum wallet not found. Please connect an Ethereum wallet in Privy. The wallet will be used for Base chain (Chain ID 8453).',
-            { id: 'wallet', duration: 8000 }
-          );
-        } else {
-          toast.error(`Wallet error: ${errorMessage}`, { id: 'wallet' });
-        }
-        return;
-      }
-      
-      // For Base chain, ensure wallet is on Base network (Chain ID 8453)
-      // Note: Privy should handle this automatically, but we can add a reminder
       if (chain === 'base') {
-        // Check if wallet is on Base network
-        // Privy wallets are EVM-compatible, so Ethereum wallet works on Base
-        // The user may need to switch network manually in their wallet
-        console.log('Base chain trade: Using Ethereum wallet for Base (Chain ID 8453)');
-      }
+        // Step 2: Get wallet address (Base only)
+        try {
+          walletAddress = await getWalletAddressForChain(
+            chainType as ChainType,
+            user,
+            wallets
+          );
 
-      // Step 3: Build transaction
-      toast.loading('Building transaction...', { id: 'build' });
-      const buildResponse = await axios.post(
-        `${backendUrl}/api/v1/trades/build-transaction`,
-        {
-          chain,
-          quote,
-          walletAddress,
-          slippageBps: 50,
-        }
-      );
-
-      const transactionData = buildResponse.data?.data || buildResponse.data;
-      if (!transactionData) {
-        toast.error('Failed to build transaction', { id: 'build' });
-        return;
-      }
-
-      // Check if this is an approval transaction (Base token sells)
-      if (transactionData.isApproval && chain === 'base') {
-        toast.loading('Approval required. Please approve token spending...', { id: 'approval' });
-        
-        // Execute approval transaction first
-        const approvalResult = await executeTrade(chainType as ChainType, user, {
-          swapTransactionBase64: transactionData.transaction,
-          quote,
-        });
-
-        if (!approvalResult.success) {
-          toast.error('Token approval failed. Please try again.', { id: 'approval' });
+          if (!walletAddress) {
+            toast.error('No wallet found for this chain');
+            return;
+          }
+        } catch (walletError: any) {
+          const errorMessage = walletError.message || 'Wallet error';
+          
+          if (chain === 'base' && errorMessage.includes('Base') || errorMessage.includes('Ethereum')) {
+            toast.error(
+              'Ethereum wallet not found. Please connect an Ethereum wallet in Privy. The wallet will be used for Base chain (Chain ID 8453).',
+              { id: 'wallet', duration: 8000 }
+            );
+          } else {
+            toast.error(`Wallet error: ${errorMessage}`, { id: 'wallet' });
+          }
           return;
         }
+        
+        console.log('Base chain trade: Using Ethereum wallet for Base (Chain ID 8453)');
 
-        toast.success('Token approved! Building swap transaction...', { id: 'approval' });
-        
-        // Wait a moment for approval to be confirmed
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Rebuild transaction (now with approval, should return swap transaction)
-        toast.loading('Building swap transaction...', { id: 'build' });
-        const swapBuildResponse = await axios.post(
+        // Step 3: Build transaction (Base only)
+        toast.loading('Building transaction...', { id: 'build' });
+        const buildResponse = await axios.post(
           `${backendUrl}/api/v1/trades/build-transaction`,
           {
             chain,
@@ -482,46 +440,86 @@ export const ListingDetail: React.FC = () => {
           }
         );
 
-        const swapTransactionData = swapBuildResponse.data?.data || swapBuildResponse.data;
-        if (!swapTransactionData || swapTransactionData.isApproval) {
-          toast.error('Failed to build swap transaction after approval', { id: 'build' });
+        const transactionData = buildResponse.data?.data || buildResponse.data;
+        if (!transactionData) {
+          toast.error('Failed to build transaction', { id: 'build' });
           return;
         }
 
-        // Update transactionData to the swap transaction
-        Object.assign(transactionData, swapTransactionData);
-        toast.success('Swap transaction ready', { id: 'build' });
-      } else {
-        toast.success('Transaction ready', { id: 'build' });
-      }
+        // Check if this is an approval transaction (Base token sells)
+        if (transactionData.isApproval && chain === 'base') {
+          toast.loading('Approval required. Please approve token spending...', { id: 'approval' });
+          
+          // Execute approval transaction first
+          try {
+            await sendBaseTransaction(transactionData.transaction);
+          } catch (approvalError: any) {
+            toast.error(approvalError.message || 'Token approval failed. Please try again.', { id: 'approval' });
+            return;
+          }
 
-      // Step 4: Execute trade (or swap if approval was done)
-      toast.loading('Executing trade...', { id: 'execute' });
-      
-      let result;
-      if (chain === 'solana' || chain === 'base') {
-        result = await executeTrade(chainType as ChainType, user, {
-          swapTransactionBase64: transactionData.transaction,
+          toast.success('Token approved! Building swap transaction...', { id: 'approval' });
+          
+          // Wait a moment for approval to be confirmed
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Rebuild transaction (now with approval, should return swap transaction)
+          toast.loading('Building swap transaction...', { id: 'build' });
+          const swapBuildResponse = await axios.post(
+            `${backendUrl}/api/v1/trades/build-transaction`,
+            {
+              chain,
+              quote,
+              walletAddress,
+              slippageBps: 50,
+            }
+          );
+
+          const swapTransactionData = swapBuildResponse.data?.data || swapBuildResponse.data;
+          if (!swapTransactionData || swapTransactionData.isApproval) {
+            toast.error('Failed to build swap transaction after approval', { id: 'build' });
+            return;
+          }
+
+          Object.assign(transactionData, swapTransactionData);
+          toast.success('Swap transaction ready', { id: 'build' });
+        } else {
+          toast.success('Transaction ready', { id: 'build' });
+        }
+
+        // Step 4: Execute trade (Base)
+        toast.loading('Executing trade...', { id: 'execute' });
+        const result = await executeTrade(chainType as ChainType, user, {
+          transaction: transactionData.transaction,
           quote,
         });
+
+        if (result.success && result.transactionHash) {
+          toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
+          setTimeout(() => {
+            listingService.getTokenTrades(contractAddress, 50).then(setTrades).catch(console.error);
+          }, 2000);
+        } else {
+          toast.error(result.error || 'Trade execution failed', { id: 'execute' });
+        }
       } else if (chain === 'movement') {
-        result = await executeTrade(chainType as ChainType, user, {
-          transactionData: transactionData,
+        // Movement: server-side signing, no build step
+        toast.loading('Executing trade...', { id: 'execute' });
+        const result = await executeTrade(chainType as ChainType, user, {
           quote,
         });
+
+        if (result.success && result.transactionHash) {
+          toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
+          setTimeout(() => {
+            listingService.getTokenTrades(contractAddress, 50).then(setTrades).catch(console.error);
+          }, 2000);
+        } else {
+          toast.error(result.error || 'Trade execution failed', { id: 'execute' });
+        }
       } else {
         toast.error('Unsupported chain', { id: 'execute' });
         return;
-      }
-
-      if (result.success && result.transactionHash) {
-        toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
-        // Refresh trades after successful execution
-        setTimeout(() => {
-          listingService.getTokenTrades(contractAddress, 50).then(setTrades).catch(console.error);
-        }, 2000);
-      } else {
-        toast.error(result.error || 'Trade execution failed', { id: 'execute' });
       }
     } catch (error: any) {
       console.error('Trade error:', error);
@@ -691,32 +689,43 @@ export const ListingDetail: React.FC = () => {
               {/* Buy/Sell Buttons */}
               {authenticated && (
                 <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      if (!user || !contractAddress) {
-                        toast.error('Please connect your wallet');
-                        return;
-                      }
-                      await handleTrade('BUY');
-                    }}
-                    disabled={trading}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                  >
-                    {trading ? 'Processing...' : 'Buy'}
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!user || !contractAddress) {
-                        toast.error('Please connect your wallet');
-                        return;
-                      }
-                      await handleTrade('SELL');
-                    }}
-                    disabled={trading}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                  >
-                    {trading ? 'Processing...' : 'Sell'}
-                  </button>
+                  {isSolanaChain ? (
+                    <button
+                      disabled
+                      className="px-4 py-2 bg-gray-300 text-gray-700 rounded cursor-not-allowed font-semibold"
+                    >
+                      Trading Coming Soon
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (!user || !contractAddress) {
+                            toast.error('Please connect your wallet');
+                            return;
+                          }
+                          await handleTrade('BUY');
+                        }}
+                        disabled={trading}
+                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                      >
+                        {trading ? 'Processing...' : 'Buy'}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!user || !contractAddress) {
+                            toast.error('Please connect your wallet');
+                            return;
+                          }
+                          await handleTrade('SELL');
+                        }}
+                        disabled={trading}
+                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                      >
+                        {trading ? 'Processing...' : 'Sell'}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -844,7 +853,9 @@ export const ListingDetail: React.FC = () => {
                           href={
                             isMovement
                               ? `https://explorer.movementnetwork.xyz/txn/${hash}?network=bardock+testnet`
-                              : `https://solscan.io/tx/${hash}`
+                              : isBaseChain
+                                ? `https://basescan.org/tx/${hash}`
+                                : `https://solscan.io/tx/${hash}`
                           }
                           target="_blank"
                           rel="noopener noreferrer"
