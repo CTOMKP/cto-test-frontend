@@ -325,11 +325,29 @@ export async function getWalletAddressForChain(
     if (!wallets) {
       throw new Error('Wallets array required for Solana');
     }
-    const solanaWallet = wallets.find(
+    // Try multiple ways to find Solana wallet
+    let solanaWallet = wallets.find(
       (w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet'
     );
+    
+    // Fallback: check by walletClientType or coinType
     if (!solanaWallet) {
-      throw new Error('No Solana wallet found');
+      solanaWallet = wallets.find(
+        (w) => w.walletClientType === 'solana' || w.coinType === 501
+      );
+    }
+    
+    // Last fallback: check by address format (Solana addresses are base58, 32-44 chars)
+    if (!solanaWallet) {
+      solanaWallet = wallets.find((w) => {
+        const addr = w.address || '';
+        // Solana addresses are base58 encoded, typically 32-44 characters
+        return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
+      });
+    }
+    
+    if (!solanaWallet) {
+      throw new Error('No Solana wallet found. Please connect a Solana wallet in Privy.');
     }
     return solanaWallet.address;
   } else if (chain === 'BASE') {
