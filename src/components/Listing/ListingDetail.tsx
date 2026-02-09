@@ -899,81 +899,105 @@ export const ListingDetail: React.FC = () => {
               <div className="text-sm text-gray-500">No trades yet.</div>
             )}
             {!tradesLoading && !tradesError && dedupedTrades.length > 0 && (
-              <div className="divide-y">
-                {dedupedTrades.map((trade, idx) => {
-                  const type = (trade.type || '').toString().toUpperCase();
-                  const isBuy = type === 'BUY' || type === 'B';
-                  const amount =
-                    trade.amount ??
-                    trade.amountToken ??
-                    0;
-                  const price =
-                    trade.price ??
-                    trade.priceUSD ??
-                    0;
-                  const total =
-                    trade.totalValue ??
-                    (Number(amount) * Number(price));
-                  const hasAmount = Number.isFinite(Number(amount)) && Number(amount) > 0;
-                  const hasPrice = Number.isFinite(Number(price)) && Number(price) > 0;
-                  const hasTotal = Number.isFinite(Number(total)) && Number(total) > 0;
-                  const hash = trade.txHash || trade.transactionHash || '';
-                  const maker = trade.makerAddress || trade.swapper || '';
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-xs text-gray-500">
+                    <tr className="border-b">
+                      <th className="text-left py-2 pr-4">Time</th>
+                      <th className="text-left py-2 pr-4">Type</th>
+                      <th className="text-right py-2 pr-4">Amount</th>
+                      <th className="text-right py-2 pr-4">Price</th>
+                      <th className="text-right py-2 pr-4">Total</th>
+                      <th className="text-left py-2 pr-4">Maker</th>
+                      <th className="text-left py-2">Tx</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {dedupedTrades.map((trade, idx) => {
+                      const type = (trade.type || '').toString().toUpperCase();
+                      const isBuy = type === 'BUY' || type === 'B';
+                      const amount =
+                        trade.amount ??
+                        trade.amountToken ??
+                        0;
+                      const price =
+                        trade.price ??
+                        trade.priceUSD ??
+                        0;
+                      const total =
+                        trade.totalValue ??
+                        (Number(amount) * Number(price));
+                      const hasAmount = Number.isFinite(Number(amount)) && Number(amount) > 0;
+                      const hasPrice = Number.isFinite(Number(price)) && Number(price) > 0;
+                      const hasTotal = Number.isFinite(Number(total)) && Number(total) > 0;
+                      const hash = trade.txHash || trade.transactionHash || '';
+                      const maker = trade.makerAddress || trade.swapper || '';
 
-                  return (
-                  <div
-                    key={hash || idx}
-                    className="py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded ${
-                          isBuy
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-rose-100 text-rose-700'
-                        }`}
-                      >
-                        {isBuy ? 'Buy' : 'Sell'}
-                      </span>
-                      <div className="text-sm text-gray-700">
-                        {hasAmount ? Number(amount).toFixed(4) : '—'} @ {hasPrice ? Number(price).toFixed(6) : '—'}
-                        {hasTotal ? ` ($${Number(total).toFixed(4)})` : ''}
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500 flex flex-col md:items-end">
-                      <span>Maker: {formatAddress(maker || '', 6, 6)}</span>
-                      {hash && (
-                        <a
-                          href={
-                            isMovement
-                              ? `https://explorer.movementnetwork.xyz/txn/${hash}?network=bardock+testnet`
-                              : isBaseChain
-                                ? `https://basescan.org/tx/${hash}`
-                                : isEthereumChain
-                                  ? `https://etherscan.io/tx/${hash}`
-                                  : isBscChain
-                                    ? `https://bscscan.com/tx/${hash}`
-                                    : chainType === 'SUI'
-                                      ? `https://suiscan.xyz/mainnet/tx/${hash}`
-                                      : `https://solscan.io/tx/${hash}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          Tx: {formatAddress(hash, 6, 6)}
-                        </a>
-                      )}
-                      {trade.timestamp ? (
-                        <span title={new Date(trade.timestamp).toLocaleString()}>
-                          {formatTimeAgo(trade.timestamp)}
-                        </span>
-                      ) : (
-                        <span>â€”</span>
-                      )}
-                    </div>
-                  </div>
-                )})}
+                      return (
+                        <tr key={hash || idx} className="align-top">
+                          <td className="py-2 pr-4 text-xs text-gray-500 whitespace-nowrap">
+                            {trade.timestamp ? (
+                              <span title={new Date(trade.timestamp).toLocaleString()}>
+                                {formatTimeAgo(trade.timestamp)}
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <span
+                              className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                                isBuy
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-rose-100 text-rose-700'
+                              }`}
+                            >
+                              {isBuy ? 'Buy' : 'Sell'}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {hasAmount ? Number(amount).toFixed(4) : '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {hasPrice ? Number(price).toFixed(6) : '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {hasTotal ? `$${Number(total).toFixed(4)}` : '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">
+                            {formatAddress(maker || '', 6, 6)}
+                          </td>
+                          <td className="py-2 text-xs whitespace-nowrap">
+                            {hash ? (
+                              <a
+                                href={
+                                  isMovement
+                                    ? `https://explorer.movementnetwork.xyz/txn/${hash}?network=bardock+testnet`
+                                    : isBaseChain
+                                      ? `https://basescan.org/tx/${hash}`
+                                      : isEthereumChain
+                                        ? `https://etherscan.io/tx/${hash}`
+                                        : isBscChain
+                                          ? `https://bscscan.com/tx/${hash}`
+                                          : chainType === 'SUI'
+                                            ? `https://suiscan.xyz/mainnet/tx/${hash}`
+                                            : `https://solscan.io/tx/${hash}`
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline"
+                              >
+                                {formatAddress(hash, 6, 6)}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -984,3 +1008,4 @@ export const ListingDetail: React.FC = () => {
 };
 
 export default ListingDetail;
+
