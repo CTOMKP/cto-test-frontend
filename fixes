@@ -136,3 +136,10 @@ How to implement in main-cto-frontend
 Notes
 - Sui trades currently return empty (no upstream support yet).
 - Solana uses Helius/Birdeye, Base/ETH/BSC use Birdeye fallback. Movement uses Sentio DB/webhook.
+
+9) Trade timestamp now shows time-ago
+What was changed
+- ListingDetail now renders trade timestamps as "5m ago" with the full timestamp in a tooltip.
+
+How to implement in main-cto-frontend
+- Add a formatTimeAgo helper and render time-ago in the trades list.

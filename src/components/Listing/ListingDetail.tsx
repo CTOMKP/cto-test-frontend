@@ -657,6 +657,23 @@ export const ListingDetail: React.FC = () => {
     return `$${n.toLocaleString()}`;
   };
 
+  const formatTimeAgo = (value: any) => {
+    if (!value) return 'â€”';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'â€”';
+    const diffMs = Date.now() - date.getTime();
+    if (diffMs < 0) return 'just now';
+    const seconds = Math.floor(diffMs / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleString();
+  };
+
   const marketCap = (data as any)?.marketCap ?? (data as any)?.metadata?.market_cap ?? (data as any)?.metadata?.market?.marketCap ?? (data as any)?.metadata?.market?.fdv ?? 0;
   const dexPair = (data as any)?.metadata?.pair_address ?? (data as any)?.metadata?.market?.pairAddress ?? null;
   const holders = (data as any)?.holders ?? (data as any)?.metadata?.holders ?? (data as any)?.metadata?.market?.holders ?? (data as any)?.metadata?.token?.holder_count ?? 0;
@@ -945,8 +962,12 @@ export const ListingDetail: React.FC = () => {
                           Tx: {formatAddress(hash, 6, 6)}
                         </a>
                       )}
-                      {trade.timestamp && (
-                        <span>{new Date(trade.timestamp).toLocaleString()}</span>
+                      {trade.timestamp ? (
+                        <span title={new Date(trade.timestamp).toLocaleString()}>
+                          {formatTimeAgo(trade.timestamp)}
+                        </span>
+                      ) : (
+                        <span>â€”</span>
                       )}
                     </div>
                   </div>
