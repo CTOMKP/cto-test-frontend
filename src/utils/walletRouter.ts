@@ -16,7 +16,7 @@ import { isHex, toHex } from 'viem';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
 
-export type ChainType = 'SOLANA' | 'MOVEMENT' | 'BASE' | 'ETHEREUM' | 'BSC';
+export type ChainType = 'SOLANA' | 'MOVEMENT' | 'BASE' | 'ETHEREUM' | 'BSC' | 'SUI';
 
 export interface TradeExecutionParams {
   chain: ChainType;
