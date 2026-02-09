@@ -57,16 +57,32 @@ export const ListingDetail: React.FC = () => {
     if (!contractAddress) return false;
     return contractAddress.startsWith('0x') || (data?.chain || '').toUpperCase().includes('MOVE');
   }, [contractAddress, data?.chain]);
+
+  const dedupedTrades = useMemo(() => {
+    const seen = new Set<string>();
+    return trades.filter((trade) => {
+      const hash = trade.txHash || trade.transactionHash || '';
+      if (!hash) return true;
+      if (seen.has(hash)) return false;
+      seen.add(hash);
+      return true;
+    });
+  }, [trades]);
   
   const chainType = useMemo<ChainType>(() => {
     if (!data?.chain) return 'SOLANA';
     const chainUpper = data.chain.toUpperCase();
     if (chainUpper === 'BASE') return 'BASE';
+    if (chainUpper === 'ETH' || chainUpper === 'ETHEREUM') return 'ETHEREUM';
+    if (chainUpper === 'BSC' || chainUpper === 'BNB') return 'BSC';
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
   const isSolanaChain = chainType === 'SOLANA';
   const isBaseChain = chainType === 'BASE';
+  const isEthereumChain = chainType === 'ETHEREUM';
+  const isBscChain = chainType === 'BSC';
+  const isTradingEnabled = chainType === 'BASE' || chainType === 'ETHEREUM' || chainType === 'BSC' || chainType === 'MOVEMENT';
 
   // Function to ensure complete data with consistent fallbacks
   const ensureCompleteData = (original: PublicListing): Partial<PublicListing> => {
@@ -286,8 +302,8 @@ export const ListingDetail: React.FC = () => {
       return;
     }
 
-    if (isSolanaChain) {
-      toast.error('Solana trading is coming soon.');
+    if (!isTradingEnabled) {
+      toast.error('Trading is coming soon for this chain.');
       return;
     }
 
@@ -307,7 +323,7 @@ export const ListingDetail: React.FC = () => {
         outputToken = tradeType === 'BUY'
           ? contractAddress
           : 'So11111111111111111111111111111111111111112'; // SOL
-      } else if (chain === 'base') {
+      } else if (chain === 'base' || chain === 'ethereum' || chain === 'bsc') {
         // For Base: Use native ETH sentinel address (0xeeee...)
         // 1inch v6.0 requires 0xeeee... for native ETH, not WETH
         // WETH requires allowance/permit which fails if user only has raw ETH
@@ -397,7 +413,7 @@ export const ListingDetail: React.FC = () => {
 
       let walletAddress: string | undefined;
 
-      if (chain === 'base') {
+      if (chain === 'base' || chain === 'ethereum' || chain === 'bsc') {
         // Step 2: Get wallet address (Base only)
         try {
           walletAddress = await getWalletAddressForChain(
@@ -413,9 +429,9 @@ export const ListingDetail: React.FC = () => {
         } catch (walletError: any) {
           const errorMessage = walletError.message || 'Wallet error';
           
-          if (chain === 'base' && errorMessage.includes('Base') || errorMessage.includes('Ethereum')) {
+          if ((chain === 'base' || chain === 'ethereum' || chain === 'bsc') && (errorMessage.includes('Base') || errorMessage.includes('Ethereum'))) {
             toast.error(
-              'Ethereum wallet not found. Please connect an Ethereum wallet in Privy. The wallet will be used for Base chain (Chain ID 8453).',
+              'EVM wallet not found. Please connect an Ethereum wallet in Privy.',
               { id: 'wallet', duration: 8000 }
             );
           } else {
@@ -424,7 +440,7 @@ export const ListingDetail: React.FC = () => {
           return;
         }
         
-        console.log('Base chain trade: Using Ethereum wallet for Base (Chain ID 8453)');
+        console.log(`EVM chain trade: Using Ethereum wallet for ${chain}`);
 
       // Step 3: Build transaction (Base only)
       toast.loading('Building transaction...', { id: 'build' });
@@ -706,7 +722,7 @@ export const ListingDetail: React.FC = () => {
               {/* Buy/Sell Buttons */}
               {authenticated && (
                 <div className="flex gap-2">
-                  {isSolanaChain ? (
+                  {!isTradingEnabled ? (
                     <button
                       disabled
                       className="px-4 py-2 bg-gray-300 text-gray-700 rounded cursor-not-allowed font-semibold"
@@ -717,32 +733,32 @@ export const ListingDetail: React.FC = () => {
                     <>
                       <button
                         onClick={async () => {
-                          if (!user || !contractAddress) {
-                            toast.error('Please connect your wallet');
-                            return;
-                          }
-                          await handleTrade('BUY');
-                        }}
-                        disabled={trading}
-                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                      >
-                        {trading ? 'Processing...' : 'Buy'}
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!user || !contractAddress) {
-                            toast.error('Please connect your wallet');
-                            return;
-                          }
-                          await handleTrade('SELL');
-                        }}
-                        disabled={trading}
-                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                      >
-                        {trading ? 'Processing...' : 'Sell'}
-                      </button>
-                    </>
-                  )}
+              if (!user || !contractAddress) {
+                toast.error('Please connect your wallet');
+                return;
+              }
+              await handleTrade('BUY');
+            }}
+            disabled={trading}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+          >
+            {trading ? 'Processing...' : 'Buy'}
+          </button>
+          <button
+            onClick={async () => {
+              if (!user || !contractAddress) {
+                toast.error('Please connect your wallet');
+                return;
+              }
+              await handleTrade('SELL');
+            }}
+            disabled={trading}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+          >
+            {trading ? 'Processing...' : 'Sell'}
+          </button>
+        </>
+      )}
                 </div>
               )}
             </div>
@@ -821,12 +837,12 @@ export const ListingDetail: React.FC = () => {
             {!tradesLoading && tradesError && (
               <div className="text-sm text-red-600">{tradesError}</div>
             )}
-            {!tradesLoading && !tradesError && trades.length === 0 && (
+            {!tradesLoading && !tradesError && dedupedTrades.length === 0 && (
               <div className="text-sm text-gray-500">No trades yet.</div>
             )}
-            {!tradesLoading && !tradesError && trades.length > 0 && (
+            {!tradesLoading && !tradesError && dedupedTrades.length > 0 && (
               <div className="divide-y">
-                {trades.map((trade, idx) => {
+                {dedupedTrades.map((trade, idx) => {
                   const type = (trade.type || '').toString().toUpperCase();
                   const isBuy = type === 'BUY' || type === 'B';
                   const amount =
@@ -840,6 +856,9 @@ export const ListingDetail: React.FC = () => {
                   const total =
                     trade.totalValue ??
                     (Number(amount) * Number(price));
+                  const hasAmount = Number.isFinite(Number(amount)) && Number(amount) > 0;
+                  const hasPrice = Number.isFinite(Number(price)) && Number(price) > 0;
+                  const hasTotal = Number.isFinite(Number(total)) && Number(total) > 0;
                   const hash = trade.txHash || trade.transactionHash || '';
                   const maker = trade.makerAddress || trade.swapper || '';
 
@@ -859,8 +878,8 @@ export const ListingDetail: React.FC = () => {
                         {isBuy ? 'Buy' : 'Sell'}
                       </span>
                       <div className="text-sm text-gray-700">
-                        {Number(amount).toFixed(4)} @ {Number(price).toFixed(6)}
-                        {total ? ` ($${Number(total).toFixed(4)})` : ''}
+                        {hasAmount ? Number(amount).toFixed(4) : '—'} @ {hasPrice ? Number(price).toFixed(6) : '—'}
+                        {hasTotal ? ` ($${Number(total).toFixed(4)})` : ''}
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 flex flex-col md:items-end">
@@ -872,7 +891,11 @@ export const ListingDetail: React.FC = () => {
                               ? `https://explorer.movementnetwork.xyz/txn/${hash}?network=bardock+testnet`
                               : isBaseChain
                                 ? `https://basescan.org/tx/${hash}`
-                                : `https://solscan.io/tx/${hash}`
+                                : isEthereumChain
+                                  ? `https://etherscan.io/tx/${hash}`
+                                  : isBscChain
+                                    ? `https://bscscan.com/tx/${hash}`
+                                    : `https://solscan.io/tx/${hash}`
                           }
                           target="_blank"
                           rel="noopener noreferrer"

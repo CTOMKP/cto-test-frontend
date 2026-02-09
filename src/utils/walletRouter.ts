@@ -16,7 +16,7 @@ import { isHex, toHex } from 'viem';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
 
-export type ChainType = 'SOLANA' | 'MOVEMENT' | 'BASE';
+export type ChainType = 'SOLANA' | 'MOVEMENT' | 'BASE' | 'ETHEREUM' | 'BSC';
 
 export interface TradeExecutionParams {
   chain: ChainType;
@@ -307,6 +307,7 @@ export function useWalletRouter() {
    * Sends tx via wallet, then records trade via backend using tx hash.
    */
   const executeBaseTrade = async (
+    chain: 'base' | 'ethereum' | 'bsc',
     transaction: any,
     quote: any
   ): Promise<WalletRouterResult> => {
@@ -321,11 +322,11 @@ export function useWalletRouter() {
 
       const response = await axios.post(
         `${API_BASE}/api/v1/trades/execute`,
-        {
-          chain: 'base',
-          quote,
-          signedTransaction: submittedTxHash,
-        },
+          {
+            chain,
+            quote,
+            signedTransaction: submittedTxHash,
+          },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -373,11 +374,12 @@ export function useWalletRouter() {
         error: 'Solana trading is disabled. This chain is read-only for now.',
       };
     }
-    if (chain === 'BASE') {
+    if (chain === 'BASE' || chain === 'ETHEREUM' || chain === 'BSC') {
       if (!params.transaction || typeof params.transaction !== 'object') {
         throw new Error('transaction is required for Base trades');
       }
-      return executeBaseTrade(params.transaction, params.quote);
+      const chainKey = chain === 'ETHEREUM' ? 'ethereum' : chain === 'BSC' ? 'bsc' : 'base';
+      return executeBaseTrade(chainKey, params.transaction, params.quote);
     } else if (chain === 'MOVEMENT') {
       return executeMovementTrade(params.quote);
     } else {
@@ -441,7 +443,7 @@ export async function getWalletAddressForChain(
       throw new Error('No Solana wallet found. Please enable Solana in Privy Dashboard (Embedded Wallets -> Chains) and connect a Solana wallet.');
     }
     return solanaWallet.address;
-  } else if (chain === 'BASE') {
+  } else if (chain === 'BASE' || chain === 'ETHEREUM' || chain === 'BSC') {
     // Base uses Privy Ethereum wallet (EVM-compatible)
     // User must switch to Chain ID 8453 before signing
     if (!wallets) {
@@ -468,7 +470,7 @@ export async function getWalletAddressForChain(
     }
     
     if (!baseWallet) {
-      throw new Error('No Base/Ethereum wallet found. Please connect an Ethereum wallet in Privy.');
+      throw new Error('No EVM wallet found. Please connect an Ethereum wallet in Privy.');
     }
     
     // Note: Frontend should ensure wallet is switched to Chain ID 8453 before signing

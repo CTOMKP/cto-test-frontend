@@ -68,3 +68,46 @@ Current behavior
 
 Documentation
 - Any docs mentioning "25 tokens, daily rotation" should be updated to reflect manual curation model
+
+5) EVM trading enabled for Base, Ethereum, and BSC in test frontend
+What was changed
+- File: cto-frontend-old-fresh/src/components/Listing/ListingDetail.tsx
+  - Trading buttons enabled only for Base/Ethereum/BSC/Movement.
+  - Solana/Sui/BSC (when not enabled) show "Trading Coming Soon".
+  - Base/Ethereum/BSC use Privy EVM wallet and 1inch build flow.
+- File: cto-frontend-old-fresh/src/utils/walletRouter.ts
+  - Chain routing expanded to include ETHEREUM and BSC.
+  - EVM send uses eth_sendTransaction and then reports txHash to backend.
+
+How the EVM trade flow works (Base/ETH/BSC)
+1) Frontend calls POST /api/v1/trades/quote with chain=base|ethereum|bsc
+2) Frontend calls POST /api/v1/trades/build-transaction with chain=base|ethereum|bsc
+3) User signs via Privy EVM wallet (eth_sendTransaction)
+4) Frontend reports txHash to backend (POST /api/v1/trades/execute)
+
+How to implement the same in main-cto-frontend
+- Update trade button gating to enable Base/Ethereum/BSC/Movement only.
+- Use the same chain keys: base, ethereum, bsc (lowercase) when calling backend.
+- Use Privy EVM wallet for Base/ETH/BSC; ensure network switching for Base (8453), Ethereum (1), BSC (56).
+
+6) Trade table parsing + formatting fixes
+What was changed
+- File: cto-frontend-old-fresh/src/services/listingService.ts
+  - Unwraps nested response: response.data.data.data if present.
+- File: cto-frontend-old-fresh/src/components/Listing/ListingDetail.tsx
+  - Dedupe by txHash to avoid duplicate rows.
+  - Display '—' for missing price/amount/totalValue instead of 0.0000.
+  - Updated explorer links based on chain (BaseScan/Etherscan/BscScan).
+
+Why some tokens show "No trades yet"
+- Upstream providers (Birdeye/DexScreener/Helius) sometimes return empty or rate-limited data.
+- Some tokens genuinely have no indexed trades yet.
+- Duplicates are from upstream; we now dedupe by txHash.
+
+7) User-facing error messaging for EVM insufficient gas
+What was changed
+- Backend now returns 1inch error descriptions to the client.
+- Frontend displays the error so users see "Not enough ETH balance" instead of a generic 400.
+
+How to implement in main-cto-frontend
+- Surface error message from backend response data.description if present.

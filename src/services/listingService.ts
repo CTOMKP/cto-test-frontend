@@ -60,7 +60,8 @@ export const listingService = {
     const res = await axios.get(
       `${backendUrl}/api/v1/tokens/${contractAddress}/trades?limit=${limit}`
     );
-    return res.data?.data || res.data || [];
+    const payload = res.data;
+    return payload?.data?.data || payload?.data || payload || [];
   },
 };
 
