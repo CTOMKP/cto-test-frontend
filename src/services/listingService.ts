@@ -55,10 +55,17 @@ export const listingService = {
     const res = await axios.post(`${backendUrl}/api/v1/listing/refresh`, { contractAddress, chain }, { headers });
     return res.data;
   },
-  async getTokenTrades(contractAddress: string, limit: number = 50): Promise<TradeEvent[]> {
+  async getTokenTrades(
+    contractAddress: string,
+    limit: number = 50,
+    chain?: string,
+  ): Promise<TradeEvent[]> {
     const backendUrl = getBackendUrl();
+    const qs = new URLSearchParams();
+    qs.set('limit', String(limit));
+    if (chain) qs.set('chain', chain);
     const res = await axios.get(
-      `${backendUrl}/api/v1/tokens/${contractAddress}/trades?limit=${limit}`
+      `${backendUrl}/api/v1/tokens/${contractAddress}/trades?${qs.toString()}`
     );
     const payload = res.data;
     return payload?.data?.data || payload?.data || payload || [];

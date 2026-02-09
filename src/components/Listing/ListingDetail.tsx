@@ -48,6 +48,7 @@ export const ListingDetail: React.FC = () => {
   const [smallBanner, setSmallBanner] = useState(false); // guard against over-zooming blurry banners
   const [isUpdated, setIsUpdated] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
   const [trades, setTrades] = useState<TradeEvent[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const [tradesError, setTradesError] = useState<string | null>(null);
@@ -77,6 +78,16 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'BSC' || chainUpper === 'BNB') return 'BSC';
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
+  }, [data?.chain]);
+  const tradeChain = useMemo<string>(() => {
+    if (!data?.chain) return 'solana';
+    const chainUpper = data.chain.toUpperCase();
+    if (chainUpper === 'BASE') return 'base';
+    if (chainUpper === 'ETH' || chainUpper === 'ETHEREUM') return 'ethereum';
+    if (chainUpper === 'BSC' || chainUpper === 'BNB') return 'bsc';
+    if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'movement';
+    if (chainUpper === 'SUI') return 'sui';
+    return 'solana';
   }, [data?.chain]);
   const isSolanaChain = chainType === 'SOLANA';
   const isBaseChain = chainType === 'BASE';
@@ -190,7 +201,7 @@ export const ListingDetail: React.FC = () => {
       if (!silent) setTradesLoading(true);
       setTradesError(null);
       try {
-        const results = await listingService.getTokenTrades(contractAddress, 50);
+        const results = await listingService.getTokenTrades(contractAddress, 50, tradeChain);
         if (!cancelled) {
           setTrades(Array.isArray(results) ? results : []);
         }
@@ -206,13 +217,15 @@ export const ListingDetail: React.FC = () => {
     };
 
     loadTrades();
-    intervalId = setInterval(() => loadTrades(true), 8000);
+    if (!wsConnected) {
+      intervalId = setInterval(() => loadTrades(true), 10000);
+    }
 
     return () => {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [contractAddress]);
+  }, [contractAddress, tradeChain, wsConnected]);
 
   // Setup WebSocket connection for real-time updates
   useEffect(() => {
@@ -229,14 +242,22 @@ export const ListingDetail: React.FC = () => {
     
     socket.on('connect', () => {
       console.log('Connected to WebSocket server for real-time updates');
+      setWsConnected(true);
+      socket.emit('trades.subscribe', {
+        tokenAddress: contractAddress,
+        chain: tradeChain,
+        limit: 50,
+      });
     });
-    
+
     socket.on('disconnect', () => {
       console.log('Disconnected from WebSocket server');
+      setWsConnected(false);
     });
     
     socket.on('connect_error', (error) => {
       console.error('WebSocket connection error:', error);
+      setWsConnected(false);
     });
     
     socket.on('listing.update', (updatedListing: any) => {
@@ -273,17 +294,37 @@ export const ListingDetail: React.FC = () => {
         });
       }
     });
+
+    socket.on('trades.update', (payload: any) => {
+      if (!payload?.trades) return;
+      const incoming = Array.isArray(payload.trades) ? payload.trades : [];
+      setTrades(incoming);
+      setTradesError(null);
+      setTradesLoading(false);
+    });
+
+    socket.on('trades.error', (payload: any) => {
+      if (payload?.message) {
+        setTradesError(payload.message);
+      }
+    });
     
     // No simulation interval - we'll rely on actual WebSocket updates
     
     // Cleanup function
     return () => {
       if (socketRef.current) {
+        socketRef.current.emit('trades.unsubscribe', {
+          tokenAddress: contractAddress,
+          chain: tradeChain,
+        });
+        socketRef.current.off('trades.update');
+        socketRef.current.off('trades.error');
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [contractAddress]);
+  }, [contractAddress, tradeChain]);
 
   // Resolve logo and banner sources with fallbacks
   const logoSrc = useMemo(() => {
@@ -530,7 +571,7 @@ export const ListingDetail: React.FC = () => {
         if (result.success && result.transactionHash) {
           toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
           setTimeout(() => {
-            listingService.getTokenTrades(contractAddress, 50).then(setTrades).catch(console.error);
+            listingService.getTokenTrades(contractAddress, 50, tradeChain).then(setTrades).catch(console.error);
           }, 2000);
         } else {
           toast.error(result.error || 'Trade execution failed', { id: 'execute' });
@@ -545,7 +586,7 @@ export const ListingDetail: React.FC = () => {
         if (result.success && result.transactionHash) {
           toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
           setTimeout(() => {
-            listingService.getTokenTrades(contractAddress, 50).then(setTrades).catch(console.error);
+            listingService.getTokenTrades(contractAddress, 50, tradeChain).then(setTrades).catch(console.error);
           }, 2000);
         } else {
           toast.error(result.error || 'Trade execution failed', { id: 'execute' });

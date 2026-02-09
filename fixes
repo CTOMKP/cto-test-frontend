@@ -111,3 +111,28 @@ What was changed
 
 How to implement in main-cto-frontend
 - Surface error message from backend response data.description if present.
+
+8) DexScreener-style live trades via WebSocket (server-side polling)
+What was changed
+- Backend: added trades websocket gateway at /ws with events:
+  - trades.subscribe { tokenAddress, chain, limit }
+  - trades.update { tokenAddress, chain, trades, timestamp }
+  - trades.unsubscribe { tokenAddress, chain }
+- Backend: /api/v1/tokens/:address/trades now accepts chain query param.
+- Frontend: ListingDetail subscribes to trades.update and uses fallback polling if WS disconnects.
+- Frontend: trade fetch includes chain so Base/ETH/BSC/Solana/Movement/Sui resolve correctly.
+
+How it works
+- Server polls upstream sources every 5s per active token room and broadcasts trades to connected clients.
+- Client receives normalized trades and renders them like DexScreener (Buy/Sell, price, amount, maker, time).
+
+How to implement in main-cto-frontend
+- Add Socket.IO subscription on ListingDetail:
+  - on connect emit trades.subscribe with tokenAddress + chain
+  - on disconnect fallback to polling /tokens/:address/trades?chain=...
+  - on unmount emit trades.unsubscribe
+- Update listingService.getTokenTrades to accept chain param.
+
+Notes
+- Sui trades currently return empty (no upstream support yet).
+- Solana uses Helius/Birdeye, Base/ETH/BSC use Birdeye fallback. Movement uses Sentio DB/webhook.
