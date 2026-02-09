@@ -143,3 +143,20 @@ What was changed
 
 How to implement in main-cto-frontend
 - Add a formatTimeAgo helper and render time-ago in the trades list.
+
+10) DexScreener-style trade normalization + Sui trades (Birdeye)
+What was changed
+- Backend now groups trades by txHash, sums amounts/totalValue, and computes missing price/total where possible.
+- Dust trades (<$0.10) and empty trades are hidden to keep tape clean.
+- Sui trades are fetched via Birdeye (x-chain: sui) using /defi/v3/token/txs.
+- Solana/EVM trade endpoints upgraded to Birdeye v3 token txs for better fields.
+
+How it works
+- If price missing and total + amount exist: price = total / amount.
+- If price missing but listing priceUsd exists: price = listing priceUsd.
+- If total missing and price+amount exist: total = price * amount.
+- Trades are grouped by txHash (multi-hop => single row).
+
+How to implement in main-cto-frontend
+- No UI changes required beyond existing trade renderer; fields will be populated.
+- Keep time-ago and smart formatting; the backend now avoids 0/blank trades.
