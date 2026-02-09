@@ -160,3 +160,17 @@ How it works
 How to implement in main-cto-frontend
 - No UI changes required beyond existing trade renderer; fields will be populated.
 - Keep time-ago and smart formatting; the backend now avoids 0/blank trades.
+
+11) DexScreener fallback logic refinements
+What was changed
+- Backend now uses listing.priceUsd to compute totalValue when upstream omits quote/total.
+- If price/total still missing after fallback, the trade is dropped.
+- Sui explorer links now use suiscan.xyz in the trade tape.
+
+How it works
+- totalValue = amount * listing.priceUsd when upstream total is missing.
+- price = totalValue / amount.
+- trades with no usable price/total are filtered out to avoid --- spam.
+
+How to implement in main-cto-frontend
+- No UI changes required besides Sui explorer link mapping.

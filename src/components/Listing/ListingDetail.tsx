@@ -953,7 +953,9 @@ export const ListingDetail: React.FC = () => {
                                   ? `https://etherscan.io/tx/${hash}`
                                   : isBscChain
                                     ? `https://bscscan.com/tx/${hash}`
-                                    : `https://solscan.io/tx/${hash}`
+                                    : chainType === 'SUI'
+                                      ? `https://suiscan.xyz/mainnet/tx/${hash}`
+                                      : `https://solscan.io/tx/${hash}`
                           }
                           target="_blank"
                           rel="noopener noreferrer"
