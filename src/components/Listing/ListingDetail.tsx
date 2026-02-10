@@ -80,8 +80,8 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
-  const tradeChain = useMemo<string | null>(() => {
-    if (!data?.chain) return null;
+  const tradeChain = useMemo<string | undefined>(() => {
+    if (!data?.chain) return undefined;
     const chainUpper = data.chain.toUpperCase();
     if (chainUpper === 'BASE') return 'base';
     if (chainUpper === 'ETH' || chainUpper === 'ETHEREUM') return 'ethereum';
@@ -572,7 +572,7 @@ export const ListingDetail: React.FC = () => {
         if (result.success && result.transactionHash) {
           toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
           setTimeout(() => {
-            listingService.getTokenTrades(contractAddress, 50, tradeChain).then(setTrades).catch(console.error);
+            listingService.getTokenTrades(contractAddress, 50, tradeChain ?? undefined).then(setTrades).catch(console.error);
           }, 2000);
         } else {
           toast.error(result.error || 'Trade execution failed', { id: 'execute' });
@@ -587,7 +587,7 @@ export const ListingDetail: React.FC = () => {
         if (result.success && result.transactionHash) {
           toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
           setTimeout(() => {
-            listingService.getTokenTrades(contractAddress, 50, tradeChain).then(setTrades).catch(console.error);
+            listingService.getTokenTrades(contractAddress, 50, tradeChain ?? undefined).then(setTrades).catch(console.error);
           }, 2000);
         } else {
           toast.error(result.error || 'Trade execution failed', { id: 'execute' });
