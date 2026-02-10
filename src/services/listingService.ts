@@ -64,6 +64,7 @@ export const listingService = {
     const qs = new URLSearchParams();
     qs.set('limit', String(limit));
     if (chain) qs.set('chain', chain);
+    qs.set('nocache', '1');
     const res = await axios.get(
       `${backendUrl}/api/v1/tokens/${contractAddress}/trades?${qs.toString()}`
     );

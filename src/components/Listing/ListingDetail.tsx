@@ -76,6 +76,7 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'BASE') return 'BASE';
     if (chainUpper === 'ETH' || chainUpper === 'ETHEREUM') return 'ETHEREUM';
     if (chainUpper === 'BSC' || chainUpper === 'BNB') return 'BSC';
+    if (chainUpper === 'SUI') return 'SUI';
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
@@ -218,7 +219,7 @@ export const ListingDetail: React.FC = () => {
 
     loadTrades();
     if (!wsConnected) {
-      intervalId = setInterval(() => loadTrades(true), 10000);
+      intervalId = setInterval(() => loadTrades(true), 2000);
     }
 
     return () => {
