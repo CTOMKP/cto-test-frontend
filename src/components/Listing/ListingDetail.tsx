@@ -80,8 +80,8 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
-  const tradeChain = useMemo<string>(() => {
-    if (!data?.chain) return 'solana';
+  const tradeChain = useMemo<string | null>(() => {
+    if (!data?.chain) return null;
     const chainUpper = data.chain.toUpperCase();
     if (chainUpper === 'BASE') return 'base';
     if (chainUpper === 'ETH' || chainUpper === 'ETHEREUM') return 'ethereum';
@@ -194,7 +194,7 @@ export const ListingDetail: React.FC = () => {
 
   // Load recent trades
   useEffect(() => {
-    if (!contractAddress) return;
+    if (!contractAddress || !tradeChain) return;
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -230,7 +230,7 @@ export const ListingDetail: React.FC = () => {
 
   // Setup WebSocket connection for real-time updates
   useEffect(() => {
-    if (!contractAddress) return;
+    if (!contractAddress || !tradeChain) return;
     
     // Create socket connection
     const socket = io(`${backendUrl}/ws`, {
