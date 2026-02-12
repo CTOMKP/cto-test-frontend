@@ -64,10 +64,7 @@ export const listingService = {
     const qs = new URLSearchParams();
     qs.set('limit', String(limit));
     if (chain) qs.set('chain', chain);
-    // Allow cache in production to reduce upstream API usage
-    if (process.env.NODE_ENV !== 'production') {
-      qs.set('nocache', '1');
-    }
+    // Always allow backend cache to reduce upstream API usage
     const res = await axios.get(
       `${backendUrl}/api/v1/tokens/${contractAddress}/trades?${qs.toString()}`
     );
