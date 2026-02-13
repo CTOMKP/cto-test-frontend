@@ -6,7 +6,7 @@ import { movementWalletService } from '../../services/movementWalletService';
 import { usePrivyAuth } from '../../services/privyAuthService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
-import pfpService from '../../services/pfpService';
+import { pfpService } from '../../services/pfpService';
 
 const MARKETPLACE_ASSET_BASE = '/marketplace';
 
