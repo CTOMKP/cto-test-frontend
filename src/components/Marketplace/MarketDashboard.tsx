@@ -1,6 +1,12 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
+import { movementWalletService } from '../../services/movementWalletService';
+import { usePrivyAuth } from '../../services/privyAuthService';
+import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
+import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
+import pfpService from '../../services/pfpService';
 
 const MARKETPLACE_ASSET_BASE = '/marketplace';
 
@@ -93,10 +99,10 @@ const DEFAULT_PRICING: PricingRow[] = [
   { kind: 'TIER', key: 'FREE', amount: 0 },
   { kind: 'TIER', key: 'PLUS', amount: 5 },
   { kind: 'TIER', key: 'PREMIUM', amount: 15 },
-  { kind: 'ADDON', key: 'auto_bump_3d', amount: 7 },
-  { kind: 'ADDON', key: 'homepage_spotlight', amount: 20 },
-  { kind: 'ADDON', key: 'urgent_tag', amount: 5 },
-  { kind: 'ADDON', key: 'multi_chain_tag', amount: 10 },
+  { kind: 'ADDON', key: 'AUTO_BUMP_3', amount: 7 },
+  { kind: 'ADDON', key: 'HOMEPAGE_SPOTLIGHT', amount: 20 },
+  { kind: 'ADDON', key: 'URGENT_TAG', amount: 5 },
+  { kind: 'ADDON', key: 'MULTI_CHAIN_TAG', amount: 10 },
 ];
 
 const ROLE_OPTIONS = ['Designer', 'Developer', 'Community Lead', 'CTO', 'Project Manager'];
@@ -148,10 +154,19 @@ export default function MarketDashboard() {
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
   const [pricing, setPricing] = useState<PricingRow[]>(DEFAULT_PRICING);
-  const [walletBalance] = useState(320);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [walletPublicKey, setWalletPublicKey] = useState('');
   const [adsId] = useState('#432738');
   const [agreeRules, setAgreeRules] = useState(false);
   const [subCategoryInput, setSubCategoryInput] = useState('');
+  const [adId, setAdId] = useState<string | null>(null);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const { user: privyUser } = usePrivyAuth();
+  const { signRawHash } = useSignRawHash();
 
   useEffect(() => {
     let mounted = true;
@@ -172,6 +187,39 @@ export default function MarketDashboard() {
     }
   }, [subCategoryInput]);
 
+  useEffect(() => {
+    const loadWallet = async () => {
+      const walletId = localStorage.getItem('cto_wallet_id');
+      if (!walletId) return;
+      try {
+        const balances = await movementWalletService.getBalance(walletId);
+        const usdc = balances.find((b) => b.tokenSymbol?.toUpperCase().includes('USDC')) || balances[0];
+        if (usdc) {
+          const decimals = typeof usdc.decimals === 'number' ? usdc.decimals : 6;
+          const numericBalance = parseFloat(usdc.balance || '0') / Math.pow(10, decimals);
+          setWalletBalance(Number.isFinite(numericBalance) ? numericBalance : 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Movement balance:', error);
+      }
+    };
+    loadWallet();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const movementWallet = getMovementWallet(privyUser);
+      if (movementWallet?.address) {
+        setWalletAddress(movementWallet.address);
+      }
+      if ((movementWallet as any)?.publicKey) {
+        setWalletPublicKey((movementWallet as any).publicKey);
+      }
+    } catch {
+      // ignore
+    }
+  }, [privyUser]);
+
   const subOptions = useMemo(() => SUBCATEGORY_MAP[draft.category] || [], [draft.category]);
   const maxImages = draft.tier === 'FREE' ? 3 : 5;
 
@@ -186,11 +234,16 @@ export default function MarketDashboard() {
     PREMIUM: getPrice('TIER', 'PREMIUM', 15),
   };
   const tierPrice = tierPriceByKey[draft.tier];
-  const autoBumpPrice = draft.autoBump ? getPrice('ADDON', 'auto_bump_3d', 7) : 0;
-  const homepagePrice = draft.homepageSpotlight ? getPrice('ADDON', 'homepage_spotlight', 20) : 0;
-  const urgentPrice = draft.urgentTag ? getPrice('ADDON', 'urgent_tag', 5) : 0;
-  const multiChainPrice = draft.multiChainTag ? getPrice('ADDON', 'multi_chain_tag', 10) : 0;
-  const imageAddonPrice = Math.max(draft.images.length - 1, 0) * 1;
+  const autoBumpDisplay = getPrice('ADDON', 'AUTO_BUMP_3', 7);
+  const homepageDisplay = getPrice('ADDON', 'HOMEPAGE_SPOTLIGHT', 20);
+  const urgentDisplay = getPrice('ADDON', 'URGENT_TAG', 5);
+  const multiChainDisplay = getPrice('ADDON', 'MULTI_CHAIN_TAG', 10);
+  const autoBumpPrice = draft.autoBump ? autoBumpDisplay : 0;
+  const homepagePrice = draft.homepageSpotlight ? homepageDisplay : 0;
+  const urgentPrice = draft.urgentTag ? urgentDisplay : 0;
+  const multiChainPrice = draft.multiChainTag ? multiChainDisplay : 0;
+  const uploadedImageCount = draft.images.filter((file) => file && file.size > 0).length;
+  const imageAddonPrice = Math.max(uploadedImageCount - 3, 0) * 1;
 
   const estimatedTotal =
     categoryPrice +
@@ -205,6 +258,121 @@ export default function MarketDashboard() {
 
   const updateDraft = (next: Partial<AdDraft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
+  };
+
+  const uploadImages = useCallback(async () => {
+    const userId = localStorage.getItem('cto_user_id');
+    const images = draft.images.filter((file) => file && file.size > 0);
+    if (!images.length || !userId) return [];
+    setIsUploading(true);
+    try {
+      const uploads = await Promise.all(
+        images.map(async (file) => {
+          const result = await pfpService.uploadProfileImage(file, userId);
+          return result.viewUrl;
+        })
+      );
+      return uploads;
+    } finally {
+      setIsUploading(false);
+    }
+  }, [draft.images]);
+
+  const buildDraftPayload = async () => {
+    const imageUrls = await uploadImages();
+    const priceAmount = Number.isFinite(Number(draft.amount)) ? Number(draft.amount) : undefined;
+    return {
+      postType: draft.postType,
+      category: draft.category,
+      subCategory: draft.subCategory,
+      title: draft.adTitle,
+      description: draft.description,
+      tags: [],
+      contactInfo: '',
+      chain: draft.blockchainFocus ? draft.blockchainFocus.toUpperCase() : undefined,
+      offerType: draft.roleType,
+      priceAmount,
+      priceCurrency: draft.paymentType,
+      images: imageUrls,
+      tier: draft.tier,
+      homepageSpotlight: draft.homepageSpotlight,
+      autoBumpDays: draft.autoBump ? 3 : undefined,
+      urgentTag: draft.urgentTag,
+      multiChainTag: draft.multiChainTag,
+    };
+  };
+
+  const ensureDraftSaved = useCallback(async () => {
+    const payload = await buildDraftPayload();
+    if (!adId) {
+      const created = await marketplaceService.createDraft(payload);
+      const nextId = created?.id || created?.data?.id;
+      if (nextId) setAdId(nextId);
+      return nextId;
+    }
+    await marketplaceService.updateDraft(adId, payload);
+    return adId;
+  }, [adId, buildDraftPayload]);
+
+  const handleGoToPayment = async () => {
+    try {
+      setIsSubmitting(true);
+      const nextId = await ensureDraftSaved();
+      if (!nextId) {
+        toast.error('Could not create ad draft. Please try again.');
+        return;
+      }
+      setStep('payment');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save draft.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (lowBalance) return;
+    if (!walletAddress || !walletPublicKey) {
+      toast.error('Movement wallet not found. Please sync wallets in Profile.');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const nextId = await ensureDraftSaved();
+      if (!nextId) throw new Error('Draft not created');
+      const paymentResponse = await marketplaceService.createPayment(nextId);
+      const resolvedPaymentId = paymentResponse?.paymentId || paymentResponse?.payment?.paymentId || paymentResponse?.payment?.id;
+      if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
+
+      if (paymentResponse?.message?.includes('No payment required')) {
+        setStep('success');
+        return;
+      }
+
+      const transactionData =
+        paymentResponse?.payment?.transactionData || paymentResponse?.transactionData || paymentResponse?.payment?.transaction_data;
+      if (!transactionData) {
+        throw new Error(paymentResponse?.message || 'Transaction data missing');
+      }
+
+      const txHash = await sendMovementTransaction(
+        transactionData,
+        walletAddress,
+        walletPublicKey,
+        signRawHash
+      );
+
+      if (resolvedPaymentId) {
+        await marketplaceService.verifyPayment(resolvedPaymentId, txHash);
+      }
+
+      setStep('success');
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message || 'Payment failed');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const updateImageAt = (index: number, file: File | null) => {
@@ -561,7 +729,7 @@ export default function MarketDashboard() {
                         <p className="text-xs text-zinc-500">Pushes your ad to the top every 24h for 3 days</p>
                       </div>
                     </div>
-                    <span className="text-amber-400">$7</span>
+                    <span className="text-amber-400">${autoBumpDisplay}</span>
                   </label>
                   <label className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-3 text-sm">
                     <div className="flex items-center gap-3">
@@ -575,7 +743,7 @@ export default function MarketDashboard() {
                         <p className="text-xs text-zinc-500">Displayed on homepage under "Top Picks"</p>
                       </div>
                     </div>
-                    <span className="text-amber-400">$20</span>
+                    <span className="text-amber-400">${homepageDisplay}</span>
                   </label>
                   <label className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-3 text-sm">
                     <div className="flex items-center gap-3">
@@ -585,7 +753,7 @@ export default function MarketDashboard() {
                         <p className="text-xs text-zinc-500">Red urgency tag, filterable</p>
                       </div>
                     </div>
-                    <span className="text-amber-400">$5</span>
+                    <span className="text-amber-400">${urgentDisplay}</span>
                   </label>
                   <label className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-3 text-sm">
                     <div className="flex items-center gap-3">
@@ -599,14 +767,14 @@ export default function MarketDashboard() {
                         <p className="text-xs text-zinc-500">Appear under multiple blockchains</p>
                       </div>
                     </div>
-                    <span className="text-amber-400">$10</span>
+                    <span className="text-amber-400">${multiChainDisplay}</span>
                   </label>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
                 <button
-                  className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
+                  className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black disabled:opacity-40"
                   onClick={() => setStep('preview')}
                 >
                   Preview
@@ -672,29 +840,30 @@ export default function MarketDashboard() {
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
                     <span>Auto-Bump (3 days)</span>
-                    <span className="text-amber-400">$7</span>
+                    <span className="text-amber-400">${autoBumpDisplay}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
                     <span>Homepage Spotlight</span>
-                    <span className="text-amber-400">$20</span>
+                    <span className="text-amber-400">${homepageDisplay}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
                     <span>Urgent Tag</span>
-                    <span className="text-amber-400">$5</span>
+                    <span className="text-amber-400">${urgentDisplay}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
                     <span>Multi-Chain Tag</span>
-                    <span className="text-amber-400">$10</span>
+                    <span className="text-amber-400">${multiChainDisplay}</span>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
                 <button
-                  className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
-                  onClick={() => setStep('payment')}
+                  className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black disabled:opacity-40"
+                  onClick={handleGoToPayment}
+                  disabled={isSubmitting || isUploading}
                 >
-                  Publish
+                  {isSubmitting ? 'Saving...' : 'Publish'}
                 </button>
                 <p className="text-sm text-zinc-400">Sub-Total: ${estimatedTotal.toFixed(0)}</p>
               </div>
@@ -721,7 +890,7 @@ export default function MarketDashboard() {
               </div>
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Ads ID</label>
-                <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={adsId} readOnly />
+                <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={adId || adsId} readOnly />
               </div>
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Listing Fee</label>
@@ -749,10 +918,10 @@ export default function MarketDashboard() {
                 {lowBalance ? (
                   <div className="mt-3 text-xs text-zinc-400">
                     Wallet Address
-                    <div className="mt-2 rounded-xl border border-white/10 bg-black/70 p-2 text-xs">49u7utLo4zWgCeD6ZaesDCvxLQLyXKahaU7kc6VGqKbB</div>
+                    <div className="mt-2 rounded-xl border border-white/10 bg-black/70 p-2 text-xs">{walletAddress || 'Sync your Movement wallet in Profile'}</div>
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-zinc-400">By clicking on �Pay�, the sum will be charged from your wallet balance.</p>
+                  <p className="mt-3 text-xs text-zinc-400">By clicking on "Pay", the sum will be charged from your wallet balance.</p>
                 )}
               </div>
 
@@ -762,11 +931,9 @@ export default function MarketDashboard() {
 
               <button
                 className="w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black disabled:opacity-40"
-                disabled={lowBalance}
-                onClick={() => setStep('success')}
-              >
-                Pay
-              </button>
+                disabled={lowBalance || isSubmitting}
+                onClick={handlePayment}
+              >{isSubmitting ? 'Processing...' : 'Pay'}</button>
             </div>
           </div>
         )}
@@ -794,7 +961,7 @@ export default function MarketDashboard() {
                 ?
               </button>
             </div>
-            <div className="mt-4 text-right text-sm text-zinc-400">Ads ID: {adsId}</div>
+            <div className="mt-4 text-right text-sm text-zinc-400">Ads ID: {adId || adsId}</div>
             <div className="mt-6 space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span>Listing</span>
@@ -805,7 +972,7 @@ export default function MarketDashboard() {
                 <span className="text-amber-400">${(autoBumpPrice + homepagePrice + urgentPrice + multiChainPrice).toFixed(0)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Images(x{draft.images.length || 2})</span>
+                <span>Images(x{uploadedImageCount || 0})</span>
                 <span className="text-amber-400">${imageAddonPrice.toFixed(0)}</span>
               </div>
               <div className="flex items-center justify-between">
