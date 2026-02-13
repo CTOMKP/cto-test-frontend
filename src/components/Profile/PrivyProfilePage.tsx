@@ -708,3 +708,4 @@ export const PrivyProfilePage: React.FC = () => {
     </div>
   );
 };
+
