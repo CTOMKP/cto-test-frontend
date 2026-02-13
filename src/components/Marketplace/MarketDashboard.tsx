@@ -316,6 +316,20 @@ function CategorySelection({
 }
 
 function AdDetailsForm({ draft, onChange, onNext, onBack }: { draft: AdDraft; onChange: (next: Partial<AdDraft>) => void; onNext: () => void; onBack: () => void }) {
+  const images = draft.images.length ? draft.images : [''];
+  const maxImages = draft.tier === 'FREE' ? 3 : 5;
+
+  const updateImage = (index: number, value: string) => {
+    const nextImages = [...images];
+    nextImages[index] = value;
+    onChange({ images: nextImages });
+  };
+
+  const addImage = () => {
+    if (images.length >= maxImages) return;
+    onChange({ images: [...images, ''] });
+  };
+
   return (
     <SectionCard title="Step 2" subtitle="Ad details">
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
