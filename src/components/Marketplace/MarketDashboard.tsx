@@ -179,9 +179,13 @@ export default function MarketDashboard() {
     const match = pricing.find((row) => row.kind === kind && row.key === key);
     return match ? match.amount : fallback;
   };
-
   const categoryPrice = getPrice('CATEGORY', draft.subCategory || draft.category, 5);
-  const tierPrice = getPrice('TIER', draft.tier, draft.tier === 'FREE' ? 0 : draft.tier === 'PLUS' ? 5 : 15);
+  const tierPriceByKey: Record<Tier, number> = {
+    FREE: getPrice('TIER', 'FREE', 0),
+    PLUS: getPrice('TIER', 'PLUS', 5),
+    PREMIUM: getPrice('TIER', 'PREMIUM', 15),
+  };
+  const tierPrice = tierPriceByKey[draft.tier];
   const autoBumpPrice = draft.autoBump ? getPrice('ADDON', 'auto_bump_3d', 7) : 0;
   const homepagePrice = draft.homepageSpotlight ? getPrice('ADDON', 'homepage_spotlight', 20) : 0;
   const urgentPrice = draft.urgentTag ? getPrice('ADDON', 'urgent_tag', 5) : 0;
@@ -272,7 +276,7 @@ export default function MarketDashboard() {
                   </div>
                   <div className="mt-4 space-y-2">
                     <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                      {ad.category} • {ad.subCategory}
+                      {ad.category} ï¿½ {ad.subCategory}
                     </p>
                     <h3 className="text-lg font-semibold">{ad.title}</h3>
                     <p className="text-sm text-zinc-400">{ad.cta}</p>
@@ -424,57 +428,73 @@ export default function MarketDashboard() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <select
-                  className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
-                  value={draft.blockchainFocus}
-                  onChange={(event) => updateDraft({ blockchainFocus: event.target.value })}
-                >
-                  {BLOCKCHAIN_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
-                  value={draft.roleType}
-                  onChange={(event) => updateDraft({ roleType: event.target.value })}
-                >
-                  {ROLE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
-                  value={draft.toolsStack}
-                  onChange={(event) => updateDraft({ toolsStack: event.target.value })}
-                >
-                  {TOOL_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
-                  value={draft.paymentType}
-                  onChange={(event) => updateDraft({ paymentType: event.target.value })}
-                >
-                  {PAYMENT_TYPES.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
-                  placeholder="Amount"
-                  value={draft.amount}
-                  onChange={(event) => updateDraft({ amount: event.target.value })}
-                />
                 <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Blockchain Focus</label>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
+                    value={draft.blockchainFocus}
+                    onChange={(event) => updateDraft({ blockchainFocus: event.target.value })}
+                  >
+                    {BLOCKCHAIN_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Role Type</label>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
+                    value={draft.roleType}
+                    onChange={(event) => updateDraft({ roleType: event.target.value })}
+                  >
+                    {ROLE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Tools/Stack</label>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
+                    value={draft.toolsStack}
+                    onChange={(event) => updateDraft({ toolsStack: event.target.value })}
+                  >
+                    {TOOL_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Payment Type</label>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
+                    value={draft.paymentType}
+                    onChange={(event) => updateDraft({ paymentType: event.target.value })}
+                  >
+                    {PAYMENT_TYPES.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Amount</label>
+                  <input
+                    className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
+                    placeholder="Amount"
+                    value={draft.amount}
+                    onChange={(event) => updateDraft({ amount: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Deadline</label>
                   <input
                     type="date"
                     className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
@@ -508,9 +528,9 @@ export default function MarketDashboard() {
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Choose how visible you want this post to be</p>
                 <div className="mt-4 space-y-3">
                   {([
-                    { value: 'FREE', label: 'Free', desc: 'Listed for 28 days', price: 0 },
-                    { value: 'PLUS', label: 'Plus', desc: 'Highlighted in listings + top for 1 day', price: tierPrice || 5 },
-                    { value: 'PREMIUM', label: 'Premium', desc: 'Top for 7 days + featured badge + show on homepage', price: 15 },
+                    { value: 'FREE', label: 'Free', desc: 'Listed for 28 days', price: tierPriceByKey.FREE },
+                    { value: 'PLUS', label: 'Plus', desc: 'Highlighted in listings + top for 1 day', price: tierPriceByKey.PLUS },
+                    { value: 'PREMIUM', label: 'Premium', desc: 'Top for 7 days + featured badge + show on homepage', price: tierPriceByKey.PREMIUM },
                   ] as const).map((option) => (
                     <label key={option.value} className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-3 text-sm">
                       <div className="flex items-center gap-3">
@@ -645,7 +665,7 @@ export default function MarketDashboard() {
                   {['FREE', 'PLUS', 'PREMIUM'].map((tier) => (
                     <div key={tier} className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
                       <span>{tier}</span>
-                      <span className="text-amber-400">${tier === 'FREE' ? 0 : tier === 'PLUS' ? 5 : 15}</span>
+                      <span className="text-amber-400">${tierPriceByKey[tier as Tier]}</span>
                     </div>
                   ))}
                 </div>
@@ -691,9 +711,22 @@ export default function MarketDashboard() {
             </div>
 
             <div className="mt-6 space-y-4">
-              <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={draft.projectName || 'Multisig Setup for Bagzilla Inu'} readOnly />
-              <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={adsId} readOnly />
-              <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={`$${estimatedTotal.toFixed(0)}`} readOnly />
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Project Title</label>
+                <input
+                  className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm"
+                  value={draft.projectName || 'Multisig Setup for Bagzilla Inu'}
+                  readOnly
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Ads ID</label>
+                <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={adsId} readOnly />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Listing Fee</label>
+                <input className="w-full rounded-2xl border border-white/10 bg-black/60 p-3 text-sm" value={`$${estimatedTotal.toFixed(0)}`} readOnly />
+              </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Payment Method</p>
@@ -719,7 +752,7 @@ export default function MarketDashboard() {
                     <div className="mt-2 rounded-xl border border-white/10 bg-black/70 p-2 text-xs">49u7utLo4zWgCeD6ZaesDCvxLQLyXKahaU7kc6VGqKbB</div>
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-zinc-400">By clicking on “Pay”, the sum will be charged from your wallet balance.</p>
+                  <p className="mt-3 text-xs text-zinc-400">By clicking on ï¿½Payï¿½, the sum will be charged from your wallet balance.</p>
                 )}
               </div>
 
