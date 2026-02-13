@@ -71,7 +71,12 @@ const SUBCATEGORY_MAP: Record<string, string[]> = {
   'Writing & Content': ['Copywriter', 'Whitepaper Writer', 'Meme Writer', 'Community Announcer', 'Script Writer', 'Translator'],
 };
 
-\nconst isFeatured = (ad: any) => {\n  if (ad?.featuredPlacement) return true;\n  if (!ad?.featuredUntil) return false;\n  const ts = new Date(ad.featuredUntil).getTime();\n  return Number.isFinite(ts) && ts > Date.now();\n};\n
+const isFeatured = (ad: any) => {
+  if (ad?.featuredPlacement) return true;
+  if (!ad?.featuredUntil) return false;
+  const ts = new Date(ad.featuredUntil).getTime();
+  return Number.isFinite(ts) && ts > Date.now();
+};
 const SAMPLE_ADS = [
   {
     id: 'dev-cta',
@@ -79,7 +84,9 @@ const SAMPLE_ADS = [
     category: 'Developers',
     subCategory: 'Smart Contract Dev',
     cta: 'Start a takeover with a verified CTO.',
-    badge: 'Featured',\n    featuredPlacement: true,\n    featuredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    badge: 'Featured',
+    featuredPlacement: true,
+    featuredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     image: `${MARKETPLACE_ASSET_BASE}/marketplace-full.png`,
   },
   {
@@ -88,7 +95,8 @@ const SAMPLE_ADS = [
     category: 'Design & Branding',
     subCategory: 'UI/UX Designer',
     cta: 'Launch-ready visuals for your meme.',
-    badge: 'Hot',\n    featuredUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+    badge: 'Hot',
+    featuredUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
     image: `${MARKETPLACE_ASSET_BASE}/marketplace.png`,
   },
   {
@@ -97,7 +105,8 @@ const SAMPLE_ADS = [
     category: 'Shilling & Marketing',
     subCategory: 'Growth Hacker',
     cta: 'Channel growth, influencer outreach, shill list.',
-    badge: 'New',\n    featuredUntil: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    badge: 'New',
+    featuredUntil: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
     image: `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`,
   },
 ];

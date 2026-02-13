@@ -15,7 +15,7 @@ import BackendIndicator from './components/common/BackendIndicator';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { PFPGenerator } from './components/PFP/PFPGenerator';
 import { AnimatedPFPIcon } from './components/PFP/AnimatedPFPIcon';
-import { MarketDashboard } from './components/Marketplace/MarketDashboard';
+import MarketDashboard from './components/Marketplace/MarketDashboard';
 import { TwoPhaseTesting } from './components/TwoPhaseTesting';
 import { useAuth } from './hooks/useAuth';
 import { ROUTES } from './utils/constants';
