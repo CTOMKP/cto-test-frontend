@@ -152,6 +152,38 @@ const isFeatured = (ad: { featuredPlacement?: boolean; featuredUntil?: string })
   return Number.isFinite(ts) && ts > Date.now();
 };
 
+const getCountdownLabel = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  const target = new Date(dateStr).getTime();
+  if (!Number.isFinite(target)) return null;
+  const diff = target - Date.now();
+  if (diff <= 0) return null;
+  const hours = Math.ceil(diff / 3600000);
+  if (hours >= 24) {
+    const days = Math.ceil(hours / 24);
+    return `${days}d left`;
+  }
+  return `${hours}h left`;
+};
+
+const getDaysLeft = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  const target = new Date(dateStr).getTime();
+  if (!Number.isFinite(target)) return null;
+  const diff = target - Date.now();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / 86400000);
+};
+
+const getDaysAgo = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  const ts = new Date(dateStr).getTime();
+  if (!Number.isFinite(ts)) return null;
+  const diff = Date.now() - ts;
+  if (diff < 0) return 0;
+  return Math.floor(diff / 86400000);
+};
+
 export default function MarketDashboard() {
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
@@ -438,6 +470,11 @@ export default function MarketDashboard() {
       <div className="mx-auto w-full max-w-6xl px-6 py-10">
         {step === 'market' && (
           <div className="space-y-10">
+            <div className="flex items-center justify-between">
+              <Link to="/profile" className="text-sm text-amber-400 underline">
+                &larr; Back to Profile
+              </Link>
+            </div>
             <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#1c1c1c] to-black p-10 text-center">
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">CTO Marketplace</p>
               <h1 className="mt-4 text-4xl font-semibold">Need to Rebuild?</h1>
@@ -466,16 +503,71 @@ export default function MarketDashboard() {
               </div>
             </div>
 
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {publicAdsLoading && (
-                  <div className="col-span-full text-center text-sm text-white/60">Loading marketplace ads...</div>
-                )}
-                {!publicAdsLoading && publicAds.length === 0 && (
-                  <div className="col-span-full text-center text-sm text-white/60">No ads yet.</div>
-                )}
-                {(publicAds.length ? publicAds : SAMPLE_ADS).map((ad) => {
-                    const imageUrl =
-                      toCloudFrontUrl(ad.image || ad.images?.[0]) ||
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {publicAdsLoading && (
+                <div className="col-span-full text-center text-sm text-white/60">Loading marketplace ads...</div>
+              )}
+              {!publicAdsLoading && publicAds.length === 0 && (
+                <div className="col-span-full text-center text-sm text-white/60">No ads yet.</div>
+              )}
+              {publicAds.map((ad) => {
+                const imageUrl =
+                  toCloudFrontUrl(ad.image || ad.images?.[0]) ||
+                  `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`;
+                const daysLeft = getDaysLeft(ad.expiresAt);
+                const postedDays = getDaysAgo(ad.createdAt);
+                const featuredCountdown = getCountdownLabel(ad.featuredUntil);
+                const spotlight = !!ad.homepageSpotlight;
+                const card = (
+                  <div className={`rounded-3xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10 ${spotlight ? 'lg:col-span-2' : ''}`}>
+                    <div className={`relative overflow-hidden rounded-2xl border border-white/10 ${spotlight ? 'h-56' : 'h-40'}`}>
+                      <img
+                        src={imageUrl}
+                        alt={ad.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                      <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
+                        {ad.badge || (ad.featuredPlacement ? 'Featured' : 'Live')}
+                      </span>
+                      {featuredCountdown && (
+                        <span className="absolute right-3 top-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white">
+                          {featuredCountdown}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                        {ad.category || 'Marketplace'} · {ad.subCategory || ad.category || 'General'}
+                      </p>
+                      <h3 className="text-lg font-semibold">{ad.title}</h3>
+                      <p className="text-sm text-zinc-400">{ad.cta || ad.description || 'View details'}</p>
+                      <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+                        {typeof postedDays === 'number' && <span>Posted {postedDays}d ago</span>}
+                        {typeof daysLeft === 'number' && <span>{daysLeft}d left</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+
+                return ad.id ? (
+                  <Link key={ad.id} to={`/marketplace/ads/${ad.id}`} className="block">
+                    {card}
+                  </Link>
+                ) : (
+                  <div key={ad.title}>{card}</div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+                      {card}
+                    </Link>
+                  ) : (
+                    <div key={ad.title}>{card}</div>
+                  );
+                })}
+
                       `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`;
                     const card = (
                       <div className="rounded-3xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10">
