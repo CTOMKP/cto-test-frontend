@@ -179,7 +179,6 @@ export default function MarketDashboard() {
       .then((rows) => {
         if (mounted && rows?.length) setPricing(rows);
       })
-                }
       .catch(() => null);
     return () => {
       mounted = false;
@@ -194,11 +193,9 @@ export default function MarketDashboard() {
       .then((items) => {
         if (mounted) setPublicAds(Array.isArray(items) ? items : []);
       })
-                }
       .catch(() => {
         if (mounted) setPublicAds([]);
       })
-                }
       .finally(() => {
         if (mounted) setPublicAdsLoading(false);
       });
