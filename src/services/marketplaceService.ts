@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { getBackendUrl } from '../utils/apiConfig';
 
 const marketplaceApi = axios.create();
@@ -7,16 +7,13 @@ marketplaceApi.interceptors.request.use((config) => {
   const token =
     localStorage.getItem('cto_auth_token') ||
     localStorage.getItem('cto_jwt_token');
-  if (token) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    };
+  if (!config.headers || !(config.headers instanceof AxiosHeaders)) {
+    config.headers = new AxiosHeaders(config.headers as Record<string, string>);
   }
-  config.headers = {
-    ...config.headers,
-    'Content-Type': 'application/json',
-  };
+  if (token) {
+    config.headers.set('Authorization', `Bearer ${token}`);
+  }
+  config.headers.set('Content-Type', 'application/json');
   return config;
 });
 
