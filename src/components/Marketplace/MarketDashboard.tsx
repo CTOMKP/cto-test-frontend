@@ -312,7 +312,6 @@ export default function MarketDashboard() {
           const result = await pfpService.uploadProfileImage(file, userId);
           return result.viewUrl;
         })
-                }
       );
       return uploads;
     } finally {
