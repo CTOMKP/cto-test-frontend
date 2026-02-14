@@ -2,7 +2,9 @@ import axios from 'axios';
 import { getBackendUrl } from '../utils/apiConfig';
 
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('cto_auth_token');
+  const token =
+    localStorage.getItem('cto_auth_token') ||
+    localStorage.getItem('cto_jwt_token');
   return token
     ? {
         'Content-Type': 'application/json',
