@@ -294,7 +294,17 @@ export const PrivyProfilePage: React.FC = () => {
       setAdsLoading(true);
       setAdsError(null);
       const res = await marketplaceService.listMine();
-      const items = res?.data || res || [];
+      let items = res?.data || res || [];
+      if (
+        (!Array.isArray(items) || items.length === 0) &&
+        localStorage.getItem('cto_jwt_token') &&
+        localStorage.getItem('cto_auth_token')
+      ) {
+        const fallback = await marketplaceService.listMineWithToken(
+          localStorage.getItem('cto_jwt_token')
+        );
+        items = fallback?.data || fallback || [];
+      }
       setMyAds(Array.isArray(items) ? items : []);
     } catch (error: any) {
       setAdsError(error?.response?.data?.message || error?.message || 'Failed to load ads');

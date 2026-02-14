@@ -13,6 +13,14 @@ const getAuthHeaders = () => {
     : { 'Content-Type': 'application/json' };
 };
 
+const getAuthHeadersForToken = (token?: string | null) =>
+  token
+    ? {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      }
+    : { 'Content-Type': 'application/json' };
+
 export const marketplaceService = {
   async getPricing() {
     const backendUrl = getBackendUrl();
@@ -58,6 +66,14 @@ export const marketplaceService = {
     const backendUrl = getBackendUrl();
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
       headers: getAuthHeaders(),
+    });
+    return res.data?.items || res.data?.data || res.data || [];
+  },
+
+  async listMineWithToken(token?: string | null) {
+    const backendUrl = getBackendUrl();
+    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
+      headers: getAuthHeadersForToken(token),
     });
     return res.data?.items || res.data?.data || res.data || [];
   },
