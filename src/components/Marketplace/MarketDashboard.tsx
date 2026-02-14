@@ -10,7 +10,7 @@ import { pfpService } from '../../services/pfpService';
 
 const MARKETPLACE_ASSET_BASE = '/marketplace';
 
-type StepKey = 'market' | 'category' | 'details' | 'preview' | 'payment' | 'success' | 'summary' | 'live';
+type StepKey = 'market' | 'category' | 'details' | 'preview' | 'payment' | 'success' | 'summary' | 'pending' | 'live';
 type PostType = 'LOOKING_FOR' | 'OFFERING';
 type Tier = 'FREE' | 'PLUS' | 'PREMIUM';
 
@@ -831,26 +831,47 @@ export default function MarketDashboard() {
                 </div>
                 <div className="mt-4 space-y-2">
                   {['FREE', 'PLUS', 'PREMIUM'].map((tier) => (
-                    <div key={tier} className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
+                    <div
+                      key={tier}
+                      className={`flex items-center justify-between rounded-2xl border px-4 py-2 text-sm ${
+                        draft.tier === tier ? 'border-amber-400/60 bg-amber-500/10 text-white' : 'border-white/10'
+                      }`}
+                    >
                       <span>{tier}</span>
                       <span className="text-amber-400">${tierPriceByKey[tier as Tier]}</span>
                     </div>
                   ))}
                 </div>
                 <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
+                  <div
+                    className={`flex items-center justify-between rounded-2xl border px-4 py-2 text-sm ${
+                      draft.autoBump ? 'border-amber-400/60 bg-amber-500/10 text-white' : 'border-white/10'
+                    }`}
+                  >
                     <span>Auto-Bump (3 days)</span>
                     <span className="text-amber-400">${autoBumpDisplay}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
+                  <div
+                    className={`flex items-center justify-between rounded-2xl border px-4 py-2 text-sm ${
+                      draft.homepageSpotlight ? 'border-amber-400/60 bg-amber-500/10 text-white' : 'border-white/10'
+                    }`}
+                  >
                     <span>Homepage Spotlight</span>
                     <span className="text-amber-400">${homepageDisplay}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
+                  <div
+                    className={`flex items-center justify-between rounded-2xl border px-4 py-2 text-sm ${
+                      draft.urgentTag ? 'border-amber-400/60 bg-amber-500/10 text-white' : 'border-white/10'
+                    }`}
+                  >
                     <span>Urgent Tag</span>
                     <span className="text-amber-400">${urgentDisplay}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-2 text-sm">
+                  <div
+                    className={`flex items-center justify-between rounded-2xl border px-4 py-2 text-sm ${
+                      draft.multiChainTag ? 'border-amber-400/60 bg-amber-500/10 text-white' : 'border-white/10'
+                    }`}
+                  >
                     <span>Multi-Chain Tag</span>
                     <span className="text-amber-400">${multiChainDisplay}</span>
                   </div>
@@ -941,18 +962,41 @@ export default function MarketDashboard() {
         {step === 'success' && (
           <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/80 p-12 text-center">
             <h2 className="text-sm uppercase tracking-[0.3em] text-zinc-400">All Set</h2>
-            <div className="mx-auto mt-6 h-24 w-24 rounded-full bg-emerald-500/20 flex items-center justify-center text-3xl">?</div>
+            <div className="mx-auto mt-6 h-24 w-24 rounded-full bg-emerald-500/20 flex items-center justify-center text-3xl">&#10003;</div>
             <h3 className="mt-6 text-3xl font-semibold">Payment Successful</h3>
-            <p className="mt-3 text-sm text-zinc-400">Congratulations! Your payment has been successful and your listing is live</p>
+            <p className="mt-3 text-sm text-zinc-400">Congratulations! Your payment has been received.</p>
             <button
               className="mt-8 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
-              onClick={() => setStep('summary')}
+              onClick={() => setStep('pending')}
             >
               Continue
             </button>
           </div>
         )}
 
+
+        {step === 'pending' && (
+          <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/80 p-12 text-center">
+            <h2 className="text-2xl font-semibold">You Are Almost Live</h2>
+            <p className="mt-3 text-sm text-zinc-400">
+              Give us a few minutes. Admin is reviewing your ad and it will go live once approved.
+            </p>
+            <div className="mt-8 flex flex-wrap justify-center gap-4">
+              <button
+                className="rounded-full border border-white/10 px-6 py-3 text-sm"
+                onClick={() => (window.location.href = '/profile')}
+              >
+                Go To Profile
+              </button>
+              <button
+                className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
+                onClick={() => setStep('market')}
+              >
+                Back To Marketplace
+              </button>
+            </div>
+          </div>
+        )}
         {step === 'summary' && (
           <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/80 p-8">
             <div className="flex items-center justify-between">
