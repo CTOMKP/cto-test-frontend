@@ -11,7 +11,8 @@ function authHeaders() {
 export const marketplaceService = {
   async getPricing() {
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/pricing`);
-    return res.data?.items || res.data?.data || res.data || [];
+    const responseData = res.data?.data || res.data;
+    return responseData?.items || responseData || [];
   },
 
   async createDraft(payload: any) {
@@ -48,7 +49,8 @@ export const marketplaceService = {
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
       headers: authHeaders(),
     });
-    return res.data?.items || res.data?.data || res.data || [];
+    const responseData = res.data?.data || res.data;
+    return responseData?.items || responseData || [];
   },
 
   async listPublic(params?: { page?: number; limit?: number; category?: string; subCategory?: string }) {
@@ -59,7 +61,8 @@ export const marketplaceService = {
     if (params?.subCategory) search.set('subCategory', params.subCategory);
     const qs = search.toString();
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads${qs ? `?${qs}` : ''}`);
-    return res.data?.items || res.data?.data || res.data || [];
+    const responseData = res.data?.data || res.data;
+    return responseData?.items || responseData || [];
   },
 };
 

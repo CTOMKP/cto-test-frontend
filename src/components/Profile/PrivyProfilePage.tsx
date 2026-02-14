@@ -294,8 +294,7 @@ export const PrivyProfilePage: React.FC = () => {
       setAdsLoading(true);
       setAdsError(null);
       const res = await marketplaceService.listMine();
-      const items = res?.data || res || [];
-      setMyAds(Array.isArray(items) ? items : []);
+      setMyAds(Array.isArray(res) ? res : res?.items ?? res?.data ?? []);
     } catch (error: any) {
       setAdsError(error?.response?.data?.message || error?.message || 'Failed to load ads');
     } finally {
