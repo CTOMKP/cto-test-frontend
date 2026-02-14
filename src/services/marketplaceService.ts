@@ -1,80 +1,62 @@
 import axios from 'axios';
 import { getBackendUrl } from '../utils/apiConfig';
 
-const getAuthHeaders = () => {
+const marketplaceApi = axios.create();
+
+marketplaceApi.interceptors.request.use((config) => {
   const token =
     localStorage.getItem('cto_auth_token') ||
     localStorage.getItem('cto_jwt_token');
-  return token
-    ? {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      }
-    : { 'Content-Type': 'application/json' };
-};
-
-const getAuthHeadersForToken = (token?: string | null) =>
-  token
-    ? {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      }
-    : { 'Content-Type': 'application/json' };
+  if (token) {
+    config.headers = {
+      ...config.headers,
+      Authorization: `Bearer ${token}`,
+    };
+  }
+  config.headers = {
+    ...config.headers,
+    'Content-Type': 'application/json',
+  };
+  return config;
+});
 
 export const marketplaceService = {
   async getPricing() {
     const backendUrl = getBackendUrl();
-    const res = await axios.get(`${backendUrl}/api/v1/marketplace/pricing`);
+    const res = await marketplaceApi.get(`${backendUrl}/api/v1/marketplace/pricing`);
     return res.data?.items || res.data?.data || res.data || [];
   },
 
   async createDraft(payload: any) {
     const backendUrl = getBackendUrl();
-    const res = await axios.post(`${backendUrl}/api/v1/marketplace/ads`, payload, {
-      headers: getAuthHeaders(),
-    });
+    const res = await marketplaceApi.post(`${backendUrl}/api/v1/marketplace/ads`, payload);
     return res.data?.data || res.data;
   },
 
   async updateDraft(adId: string, payload: any) {
     const backendUrl = getBackendUrl();
-    const res = await axios.put(`${backendUrl}/api/v1/marketplace/ads/${adId}`, payload, {
-      headers: getAuthHeaders(),
-    });
+    const res = await marketplaceApi.put(`${backendUrl}/api/v1/marketplace/ads/${adId}`, payload);
     return res.data?.data || res.data;
   },
 
   async createPayment(adId: string) {
     const backendUrl = getBackendUrl();
-    const res = await axios.post(`${backendUrl}/api/v1/marketplace/ads/${adId}/pay`, {}, {
-      headers: getAuthHeaders(),
-    });
+    const res = await marketplaceApi.post(`${backendUrl}/api/v1/marketplace/ads/${adId}/pay`, {});
     return res.data?.data || res.data;
   },
 
   async verifyPayment(paymentId: string, txHash: string) {
     const backendUrl = getBackendUrl();
-    const res = await axios.post(
+    const res = await marketplaceApi.post(
       `${backendUrl}/api/v1/marketplace/ads/payments/${paymentId}/verify`,
-      { txHash },
-      { headers: getAuthHeaders() }
+      { txHash }
     );
     return res.data?.data || res.data;
   },
 
   async listMine() {
     const backendUrl = getBackendUrl();
-    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
-      headers: getAuthHeaders(),
-    });
-    return res.data?.items || res.data?.data || res.data || [];
-  },
-
-  async listMineWithToken(token?: string | null) {
-    const backendUrl = getBackendUrl();
-    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
-      headers: getAuthHeadersForToken(token),
-    });
+    const res = await marketplaceApi.get(`${backendUrl}/api/v1/marketplace/ads/mine`);
     return res.data?.items || res.data?.data || res.data || [];
   },
 
@@ -86,7 +68,7 @@ export const marketplaceService = {
     if (params?.category) search.set('category', params.category);
     if (params?.subCategory) search.set('subCategory', params.subCategory);
     const qs = search.toString();
-    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads${qs ? `?${qs}` : ''}`);
+    const res = await marketplaceApi.get(`${backendUrl}/api/v1/marketplace/ads${qs ? `?${qs}` : ''}`);
     return res.data?.items || res.data?.data || res.data || [];
   },
 };
