@@ -289,6 +289,20 @@ export const PrivyProfilePage: React.FC = () => {
     }
   };
 
+  const loadMyAds = async () => {
+    try {
+      setAdsLoading(true);
+      setAdsError(null);
+      const res = await marketplaceService.listMine();
+      const items = res?.data || res || [];
+      setMyAds(Array.isArray(items) ? items : []);
+    } catch (error: any) {
+      setAdsError(error?.response?.data?.message || error?.message || 'Failed to load ads');
+    } finally {
+      setAdsLoading(false);
+    }
+  };
+
   const formatCompactNumber = (value?: number | null) => {
     if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
     const num = Number(value);
@@ -515,7 +529,66 @@ export const PrivyProfilePage: React.FC = () => {
           )}
 
           {activeTab === 'ads' && (
-            <div className="text-sm text-gray-500">Ad management is coming soon.</div>
+            <div className="overflow-x-auto">
+              {adsError && (
+                <div className="bg-red-50 text-red-700 border border-red-200 rounded p-3 mb-4 text-sm">
+                  {adsError}
+                </div>
+              )}
+              {adsLoading ? (
+                <div className="text-sm text-gray-500">Loading ads...</div>
+              ) : myAds.length === 0 ? (
+                <div className="text-sm text-gray-500">No ads yet.</div>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-3 pr-4">Title</th>
+                      <th className="py-3 pr-4">Status</th>
+                      <th className="py-3 pr-4">Category</th>
+                      <th className="py-3 pr-4">Tier</th>
+                      <th className="py-3 pr-4">Created</th>
+                      <th className="py-3">Expires</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myAds.map((ad: any) => {
+                      const statusBadge =
+                        ad.status === 'PUBLISHED'
+                          ? 'bg-green-100 text-green-800'
+                          : ad.status === 'PENDING_APPROVAL'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : ad.status === 'REJECTED'
+                          ? 'bg-red-100 text-red-800'
+                          : ad.status === 'EXPIRED'
+                          ? 'bg-gray-200 text-gray-700'
+                          : 'bg-gray-100 text-gray-800';
+                      return (
+                        <tr key={ad.id} className="border-b hover:bg-gray-50">
+                          <td className="py-4 pr-4">
+                            <div className="font-semibold text-gray-900">{ad.title}</div>
+                            <div className="text-xs text-gray-500">{ad.subCategory || ad.category}</div>
+                          </td>
+                          <td className="py-4 pr-4">
+                            <span className={`text-xs px-2 py-1 rounded ${statusBadge}`}>
+                              {ad.status}
+                            </span>
+                          </td>
+                          <td className="py-4 pr-4">{ad.category}</td>
+                          <td className="py-4 pr-4">{ad.tier}</td>
+                          <td className="py-4 pr-4">
+                            {ad.createdAt ? new Date(ad.createdAt).toLocaleDateString() : '--'}
+                          </td>
+                          <td className="py-4">
+                            {ad.expiresAt ? new Date(ad.expiresAt).toLocaleDateString() : '--'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           )}
 
           {activeTab === 'tx' && (
