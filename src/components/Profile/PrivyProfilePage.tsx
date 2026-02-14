@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { MovementWalletActivity, MovementWalletRecentActivity } from '../UserListings/MovementWalletActivity';
 import userListingsService from '../../services/userListingsService';
+import marketplaceService from '../../services/marketplaceService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 
 export const PrivyProfilePage: React.FC = () => {
@@ -19,6 +20,9 @@ export const PrivyProfilePage: React.FC = () => {
   const [myListings, setMyListings] = useState<any[]>([]);
   const [listingsLoading, setListingsLoading] = useState(false);
   const [listingsError, setListingsError] = useState<string | null>(null);
+  const [myAds, setMyAds] = useState<any[]>([]);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [adsError, setAdsError] = useState<string | null>(null);
   const [activityState, setActivityState] = useState({
     transactions: [] as any[],
     loading: true,
@@ -40,6 +44,7 @@ export const PrivyProfilePage: React.FC = () => {
       loadBackendWallets();
       loadAvatarFromBackend();
       loadMyListings();
+      loadMyAds();
     }
   }, [authenticated, user]);
 
@@ -569,12 +574,6 @@ export const PrivyProfilePage: React.FC = () => {
               className="bg-pink-500 text-white px-4 py-3 rounded-lg hover:bg-pink-600 transition-colors font-semibold text-sm"
             >
               🎴 Get PFP
-            </button>
-            <button
-              onClick={() => navigate(ROUTES.admin)}
-              className="bg-red-500 text-white px-4 py-3 rounded-lg hover:bg-red-600 transition-colors font-semibold text-sm"
-            >
-              🛡️ Admin
             </button>
           </div>
         </div>

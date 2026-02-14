@@ -51,6 +51,14 @@ export const marketplaceService = {
     );
     return res.data?.data || res.data;
   },
+
+  async listMine() {
+    const backendUrl = getBackendUrl();
+    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
+      headers: getAuthHeaders(),
+    });
+    return res.data?.items || res.data?.data || res.data || [];
+  },
 };
 
 export default marketplaceService;

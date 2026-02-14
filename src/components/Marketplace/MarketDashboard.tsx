@@ -227,7 +227,7 @@ export default function MarketDashboard() {
     const match = pricing.find((row) => row.kind === kind && row.key === key);
     return match ? match.amount : fallback;
   };
-  const categoryPrice = getPrice('CATEGORY', draft.subCategory || draft.category, 5);
+  const categoryPrice = 0;
   const tierPriceByKey: Record<Tier, number> = {
     FREE: getPrice('TIER', 'FREE', 0),
     PLUS: getPrice('TIER', 'PLUS', 5),
