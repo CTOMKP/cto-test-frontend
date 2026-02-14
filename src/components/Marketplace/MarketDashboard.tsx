@@ -1,5 +1,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
@@ -7,6 +8,7 @@ import { usePrivyAuth } from '../../services/privyAuthService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { pfpService } from '../../services/pfpService';
+import { getCloudFrontUrl } from '../../utils/image-url-helper';
 
 const MARKETPLACE_ASSET_BASE = '/marketplace';
 
@@ -177,6 +179,7 @@ export default function MarketDashboard() {
       .then((rows) => {
         if (mounted && rows?.length) setPricing(rows);
       })
+                }
       .catch(() => null);
     return () => {
       mounted = false;
@@ -191,9 +194,11 @@ export default function MarketDashboard() {
       .then((items) => {
         if (mounted) setPublicAds(Array.isArray(items) ? items : []);
       })
+                }
       .catch(() => {
         if (mounted) setPublicAds([]);
       })
+                }
       .finally(() => {
         if (mounted) setPublicAdsLoading(false);
       });
@@ -245,6 +250,20 @@ export default function MarketDashboard() {
   const maxImages = draft.tier === 'FREE' ? 3 : 5;
   const adsToRender = publicAds.length > 0 ? publicAds : SAMPLE_ADS;
 
+  const toCloudFrontUrl = (url?: string | null) => {
+    if (!url || typeof url !== 'string') return undefined;
+    if (url.includes('cloudfront.net')) return url;
+    if (url.includes('/api/v1/images/view/')) {
+      const match = url.match(/\/api\/v1\/images\/view\/(.+)$/);
+      if (match) {
+        const imagePath = match[1].split('?')[0];
+        return getCloudFrontUrl(imagePath);
+      }
+    }
+    if (url.includes('user-uploads/')) return getCloudFrontUrl(url);
+    return url;
+  };
+
   const getPrice = (kind: PricingRow['kind'], key: string, fallback: number) => {
     const match = pricing.find((row) => row.kind === kind && row.key === key);
     return match ? match.amount : fallback;
@@ -293,6 +312,7 @@ export default function MarketDashboard() {
           const result = await pfpService.uploadProfileImage(file, userId);
           return result.viewUrl;
         })
+                }
       );
       return uploads;
     } finally {
@@ -457,32 +477,47 @@ export default function MarketDashboard() {
                 {!publicAdsLoading && publicAds.length === 0 && (
                   <div className="col-span-full text-center text-sm text-white/60">No ads yet.</div>
                 )}
-                {(publicAds.length ? publicAds : SAMPLE_ADS).map((ad) => (
-                  <div key={ad.id} className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                    <div className="relative h-40 overflow-hidden rounded-2xl border border-white/10">
-                      <img
-                        src={ad.image || ad.images?.[0] || `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`}
-                        alt={ad.title}
-                        className="h-full w-full object-cover"
-                      />
-                      <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
-                        {ad.badge || (ad.featuredPlacement ? 'Featured' : 'Live')}
-                      </span>
-                      {isFeatured(ad) && (
-                        <span className="absolute right-3 top-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
-                          Purple Badge
-                        </span>
-                    )}
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                      {ad.category} ï¿½ {ad.subCategory}
-                    </p>
-                    <h3 className="text-lg font-semibold">{ad.title}</h3>
-                    <p className="text-sm text-zinc-400">{ad.cta}</p>
-                  </div>
-                </div>
-              ))}
+                {(publicAds.length ? publicAds : SAMPLE_ADS).map((ad) => {
+                    const imageUrl =
+                      toCloudFrontUrl(ad.image || ad.images?.[0]) ||
+                      `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`;
+                    const card = (
+                      <div className="rounded-3xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10">
+                        <div className="relative h-40 overflow-hidden rounded-2xl border border-white/10">
+                          <img
+                            src={imageUrl}
+                            alt={ad.title}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                          <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
+                            {ad.badge || (ad.featuredPlacement ? 'Featured' : 'Live')}
+                          </span>
+                          {isFeatured(ad) && (
+                            <span className="absolute right-3 top-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
+                              Purple Badge
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                            {ad.category || 'Marketplace'} · {ad.subCategory || ad.category || 'General'}
+                          </p>
+                          <h3 className="text-lg font-semibold">{ad.title}</h3>
+                          <p className="text-sm text-zinc-400">{ad.cta || ad.description || 'View details'}</p>
+                        </div>
+                      </div>
+                    );
+
+                    return ad.id ? (
+                      <Link key={ad.id} to={`/marketplace/ads/${ad.id}`} className="block">
+                        {card}
+                      </Link>
+                    ) : (
+                      <div key={ad.title}>{card}</div>
+                    );
+                  })
+                }
             </div>
           </div>
         )}
@@ -1126,3 +1161,6 @@ export default function MarketDashboard() {
     </div>
   );
 }
+
+
+

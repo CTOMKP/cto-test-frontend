@@ -542,6 +542,7 @@ export const PrivyProfilePage: React.FC = () => {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-500 border-b">
+                      <th className="py-3 pr-4">Ad</th>
                       <th className="py-3 pr-4">Title</th>
                       <th className="py-3 pr-4">Status</th>
                       <th className="py-3 pr-4">Category</th>
@@ -552,6 +553,7 @@ export const PrivyProfilePage: React.FC = () => {
                   </thead>
                   <tbody>
                     {myAds.map((ad: any) => {
+                      const thumb = toCloudFrontUrl(ad.images?.[0]);
                       const statusBadge =
                         ad.status === 'PUBLISHED'
                           ? 'bg-green-100 text-green-800'
@@ -565,7 +567,18 @@ export const PrivyProfilePage: React.FC = () => {
                       return (
                         <tr key={ad.id} className="border-b hover:bg-gray-50">
                           <td className="py-4 pr-4">
-                            <div className="font-semibold text-gray-900">{ad.title}</div>
+                            <div className="h-12 w-12 rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center">
+                              {thumb ? (
+                                <img src={thumb} alt={ad.title} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-xs text-gray-400">N/A</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4">
+                            <Link to={`/marketplace/ads/${ad.id}`} className="font-semibold text-gray-900 hover:underline">
+                              {ad.title}
+                            </Link>
                             <div className="text-xs text-gray-500">{ad.subCategory || ad.category}</div>
                           </td>
                           <td className="py-4 pr-4">

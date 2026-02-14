@@ -64,6 +64,12 @@ export const marketplaceService = {
     const responseData = res.data?.data || res.data;
     return responseData?.items || responseData || [];
   },
+
+  async getPublicAd(id: string) {
+    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/${id}`);
+    const responseData = res.data?.data || res.data;
+    return responseData?.data || responseData;
+  },
 };
 
 export default marketplaceService;
