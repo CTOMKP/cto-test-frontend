@@ -154,6 +154,8 @@ export default function MarketDashboard() {
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
   const [pricing, setPricing] = useState<PricingRow[]>(DEFAULT_PRICING);
+  const [publicAds, setPublicAds] = useState<any[]>([]);
+  const [publicAdsLoading, setPublicAdsLoading] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletAddress, setWalletAddress] = useState('');
   const [walletPublicKey, setWalletPublicKey] = useState('');
@@ -176,6 +178,25 @@ export default function MarketDashboard() {
         if (mounted && rows?.length) setPricing(rows);
       })
       .catch(() => null);
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    setPublicAdsLoading(true);
+    marketplaceService
+      .listPublic({ page: 1, limit: 24 })
+      .then((items) => {
+        if (mounted) setPublicAds(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        if (mounted) setPublicAds([]);
+      })
+      .finally(() => {
+        if (mounted) setPublicAdsLoading(false);
+      });
     return () => {
       mounted = false;
     };
@@ -222,6 +243,7 @@ export default function MarketDashboard() {
 
   const subOptions = useMemo(() => SUBCATEGORY_MAP[draft.category] || [], [draft.category]);
   const maxImages = draft.tier === 'FREE' ? 3 : 5;
+  const adsToRender = publicAds.length > 0 ? publicAds : SAMPLE_ADS;
 
   const getPrice = (kind: PricingRow['kind'], key: string, fallback: number) => {
     const match = pricing.find((row) => row.kind === kind && row.key === key);
@@ -428,18 +450,28 @@ export default function MarketDashboard() {
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {SAMPLE_ADS.map((ad) => (
-                <div key={ad.id} className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                  <div className="relative h-40 overflow-hidden rounded-2xl border border-white/10">
-                    <img src={ad.image} alt={ad.title} className="h-full w-full object-cover" />
-                    <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
-                      {ad.badge}
-                    </span>
-                    {isFeatured(ad) && (
-                      <span className="absolute right-3 top-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
-                        Purple Badge
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {publicAdsLoading && (
+                  <div className="col-span-full text-center text-sm text-white/60">Loading marketplace ads...</div>
+                )}
+                {!publicAdsLoading && publicAds.length === 0 && (
+                  <div className="col-span-full text-center text-sm text-white/60">No ads yet.</div>
+                )}
+                {(publicAds.length ? publicAds : SAMPLE_ADS).map((ad) => (
+                  <div key={ad.id} className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <div className="relative h-40 overflow-hidden rounded-2xl border border-white/10">
+                      <img
+                        src={ad.image || ad.images?.[0] || `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`}
+                        alt={ad.title}
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
+                        {ad.badge || (ad.featuredPlacement ? 'Featured' : 'Live')}
                       </span>
+                      {isFeatured(ad) && (
+                        <span className="absolute right-3 top-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
+                          Purple Badge
+                        </span>
                     )}
                   </div>
                   <div className="mt-4 space-y-2">

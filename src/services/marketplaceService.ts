@@ -77,6 +77,18 @@ export const marketplaceService = {
     });
     return res.data?.items || res.data?.data || res.data || [];
   },
+
+  async listPublic(params?: { page?: number; limit?: number; category?: string; subCategory?: string }) {
+    const backendUrl = getBackendUrl();
+    const search = new URLSearchParams();
+    if (params?.page) search.set('page', String(params.page));
+    if (params?.limit) search.set('limit', String(params.limit));
+    if (params?.category) search.set('category', params.category);
+    if (params?.subCategory) search.set('subCategory', params.subCategory);
+    const qs = search.toString();
+    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads${qs ? `?${qs}` : ''}`);
+    return res.data?.items || res.data?.data || res.data || [];
+  },
 };
 
 export default marketplaceService;
