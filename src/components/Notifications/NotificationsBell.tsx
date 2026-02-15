@@ -21,16 +21,21 @@ export default function NotificationsBell() {
 
   useEffect(() => {
     loadNotifications();
+    const interval = setInterval(loadNotifications, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('cto_auth_token');
     if (!token) return;
     const socket: Socket = io(`${backendUrl}/ws`, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
     });
     socket.on('connect', () => {
       socket.emit('notifications.subscribe', { token });
+    });
+    socket.on('connect_error', () => {
+      // fallback to polling only; list is already polled
     });
     socket.on('notifications.new', (payload: any) => {
       setItems((prev) => [payload, ...prev]);

@@ -6,6 +6,9 @@ export default function MarketplaceTopNav() {
     const raw = localStorage.getItem('cto_user_xp');
     return raw ? Number(raw) : 0;
   }, []);
+  const avatarUrl = useMemo(() => {
+    return localStorage.getItem('cto_user_avatar_url') || localStorage.getItem('profile_avatar_url') || '';
+  }, []);
 
   return (
     <div className="w-full border-b border-white/5 bg-black/90">
@@ -30,7 +33,15 @@ export default function MarketplaceTopNav() {
             <button className="h-9 w-9 rounded-xl bg-white/5" />
             <button className="h-9 w-9 rounded-xl bg-white/5" />
           </div>
-          <button className="h-9 w-9 rounded-full bg-white/10" />
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Profile"
+              className="h-9 w-9 rounded-full object-cover border border-white/10"
+            />
+          ) : (
+            <button className="h-9 w-9 rounded-full bg-white/10" />
+          )}
         </div>
       </div>
     </div>

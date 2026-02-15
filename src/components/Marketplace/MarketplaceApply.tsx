@@ -4,6 +4,7 @@ import marketplaceService from '../../services/marketplaceService';
 import messagesService from '../../services/messagesService';
 import xpService from '../../services/xpService';
 import MarketplaceTopNav from './MarketplaceTopNav';
+import toast from 'react-hot-toast';
 
 export default function MarketplaceApply() {
   const { id } = useParams();
@@ -47,7 +48,12 @@ export default function MarketplaceApply() {
         }, 1200);
       }
     } catch (error: any) {
-      console.error(error);
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        'Failed to send application';
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
