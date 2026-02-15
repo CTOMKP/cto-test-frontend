@@ -15,6 +15,12 @@ export const xpService = {
     });
     return res.data?.data || res.data;
   },
+  async getBalance() {
+    const res = await axios.get(`${backendUrl}/api/v1/xp/me`, {
+      headers: authHeaders(),
+    });
+    return res.data?.data || res.data;
+  },
 };
 
 export default xpService;

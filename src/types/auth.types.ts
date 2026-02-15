@@ -5,6 +5,8 @@ export interface User {
   avatarUrl?: string | null;
   name?: string | null;
   bio?: string | null;
+  role?: string;
+  xpBalance?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,7 +40,6 @@ export interface AuthError {
   message: string;
   field?: string;
 }
-
 
 
 

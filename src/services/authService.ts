@@ -192,6 +192,7 @@ class AuthService {
       id: email,
       email: email,
       walletId: localStorage.getItem('cto_wallet_id') || '',
+      xpBalance: localStorage.getItem('cto_user_xp') ? Number(localStorage.getItem('cto_user_xp')) : undefined,
       createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

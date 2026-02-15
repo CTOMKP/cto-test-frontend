@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 import FundingModal from '../Funding/FundingModal';
 import { HarvestGrape } from '../PFP/HarvestGrape';
+import xpService from '../../services/xpService';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ export const ProfilePage: React.FC = () => {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [showFundingModal, setShowFundingModal] = useState(false);
+  const [xpBalance, setXpBalance] = useState<number | null>(user?.xpBalance ?? null);
 
   // Profile images - check both localStorage keys and backend
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
@@ -203,6 +205,22 @@ export const ProfilePage: React.FC = () => {
     };
   }, [avatarUrl]);
 
+  useEffect(() => {
+    const loadXp = async () => {
+      try {
+        const res = await xpService.getBalance();
+        const balance = res?.balance ?? res?.xpBalance ?? res?.data?.balance;
+        if (typeof balance === 'number') {
+          setXpBalance(balance);
+          localStorage.setItem('cto_user_xp', String(balance));
+        }
+      } catch {
+        // best-effort
+      }
+    };
+    if (isAuthenticated) loadXp();
+  }, [isAuthenticated]);
+
   // Debug logging
   useEffect(() => {
     console.log('🔄 ProfilePage mounted');
@@ -277,6 +295,7 @@ export const ProfilePage: React.FC = () => {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
               <p className="text-gray-600">Welcome back, {user.email}</p>
+              <p className="text-sm text-gray-500">XP Balance: {xpBalance ?? user.xpBalance ?? 0}</p>
             </div>
             <div className="flex space-x-3">
               <a href="/" className="btn-secondary">Back to Listings</a>

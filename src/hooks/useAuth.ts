@@ -120,6 +120,7 @@ export const useAuth = () => {
       const storedUserId = localStorage.getItem('cto_user_id'); // Real numeric ID
       const storedToken = localStorage.getItem('cto_auth_token');
       const storedWalletId = localStorage.getItem('cto_wallet_id');
+      const storedXp = localStorage.getItem('cto_user_xp');
       
       console.log('🔄 Checking localStorage for auth data:');
       console.log('🔄 storedUserId:', storedUserId);
@@ -134,6 +135,7 @@ export const useAuth = () => {
           id: storedUserId,
           email: storedEmail || '',
           walletId: storedWalletId || '',
+          xpBalance: storedXp ? Number(storedXp) : undefined,
           createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -154,6 +156,7 @@ export const useAuth = () => {
           id: storedEmail,
           email: storedEmail,
           walletId: storedWalletId || '',
+          xpBalance: storedXp ? Number(storedXp) : undefined,
           createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -187,6 +190,7 @@ export const useAuth = () => {
         // STRATEGIC FIX: Update localStorage with the real numeric ID and walletId from the API
         if (user.id) localStorage.setItem('cto_user_id', String(user.id));
         if (user.walletId) localStorage.setItem('cto_wallet_id', user.walletId);
+        if (typeof user.xpBalance === 'number') localStorage.setItem('cto_user_xp', String(user.xpBalance));
         
         setAuthState({
           user,
@@ -237,6 +241,9 @@ export const useAuth = () => {
       localStorage.setItem('cto_user_created', response.user.createdAt);
       if (response.user.walletId) {
         localStorage.setItem('cto_wallet_id', response.user.walletId);
+      }
+      if (typeof response.user.xpBalance === 'number') {
+        localStorage.setItem('cto_user_xp', String(response.user.xpBalance));
       }
       if (response.user.avatarUrl) {
         localStorage.setItem('cto_user_avatar_url', response.user.avatarUrl);
@@ -303,6 +310,9 @@ export const useAuth = () => {
       if (response.user.walletId) {
         localStorage.setItem('cto_wallet_id', response.user.walletId);
       }
+      if (typeof response.user.xpBalance === 'number') {
+        localStorage.setItem('cto_user_xp', String(response.user.xpBalance));
+      }
       localStorage.setItem('cto_auth_token', response.token);
       
       console.log('✅ User data stored in localStorage after signup');
@@ -330,6 +340,7 @@ export const useAuth = () => {
       localStorage.removeItem('cto_user_email');
       localStorage.removeItem('cto_user_created');
       localStorage.removeItem('cto_wallet_id');
+      localStorage.removeItem('cto_user_xp');
       localStorage.removeItem('cto_auth_token');
       
       console.log('✅ All localStorage data cleared');
@@ -361,6 +372,7 @@ export const useAuth = () => {
       localStorage.removeItem('cto_user_email');
       localStorage.removeItem('cto_user_created');
       localStorage.removeItem('cto_wallet_id');
+      localStorage.removeItem('cto_user_xp');
       localStorage.removeItem('cto_auth_token');
       
       setAuthState({
