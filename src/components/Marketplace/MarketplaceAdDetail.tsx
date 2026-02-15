@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import marketplaceService from '../../services/marketplaceService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
+import MarketplaceTopNav from './MarketplaceTopNav';
 
 const toCloudFrontUrl = (url?: string | null) => {
   if (!url || typeof url !== 'string') return undefined;
@@ -70,66 +71,97 @@ export const MarketplaceAdDetail: React.FC = () => {
     );
   }
 
+  const heroImage = images[0] || '/marketplace/ads-thumbnail.png';
+  const thumbs = images.length ? images.slice(0, 4) : [];
+
   return (
-    <div className="min-h-screen bg-black text-white px-6 py-10">
-      <div className="mx-auto max-w-5xl space-y-8">
+    <div className="min-h-screen bg-black text-white">
+      <MarketplaceTopNav />
+      <div className="px-6 py-10">
+      <div className="mx-auto max-w-6xl space-y-8">
         <Link to="/market" className="text-sm text-amber-400 underline">
           Back to Marketplace
         </Link>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                {ad.category} · {ad.subCategory || 'General'}
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold">{ad.title}</h1>
-              <p className="mt-2 text-sm text-zinc-400">{ad.description}</p>
+        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-8">
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
+              <img src={heroImage} alt="Ad hero" className="w-full rounded-2xl object-cover" />
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm">
-              <div className="text-zinc-400">Tier</div>
-              <div className="text-lg font-semibold">{ad.tier}</div>
-            </div>
-          </div>
-
-          {images.length > 0 && (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {images.map((url, index) => (
-                <div key={`${url}-${index}`} className="overflow-hidden rounded-2xl border border-white/10">
-                  <img src={url} alt={`Ad ${index + 1}`} className="h-48 w-full object-cover" />
-                </div>
+            <div className="grid grid-cols-4 gap-3">
+              {thumbs.map((src, idx) => (
+                <img key={`${src}-${idx}`} src={src} alt={`Thumb ${idx + 1}`} className="h-20 w-full rounded-2xl object-cover border border-white/10" />
               ))}
             </div>
-          )}
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm">
-              <div className="text-zinc-400">Role / Offer</div>
-              <div className="text-base font-semibold">{ad.offerType || 'Not specified'}</div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm">
-              <div className="text-zinc-400">Payment</div>
-              <div className="text-base font-semibold">
-                {ad.priceAmount ? `${ad.priceAmount} ${ad.priceCurrency || 'USDC'}` : 'Open'}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm">
-              <div className="text-zinc-400">Blockchain Focus</div>
-              <div className="text-base font-semibold">{ad.chain || 'Not specified'}</div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm">
-              <div className="text-zinc-400">Status</div>
-              <div className="text-base font-semibold">{ad.status}</div>
-            </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm">
-            <div className="text-zinc-400">Contact</div>
-            <div className="mt-1 text-base font-semibold">
-              {ad.contactInfo || 'Contact info not provided'}
+          <div className="rounded-3xl border border-white/10 bg-black/70 p-6 space-y-6">
+            <div>
+              <h1 className="text-2xl font-semibold">{ad.title}</h1>
+              <p className="mt-2 text-sm text-zinc-400">{ad.description}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-zinc-400">Role</p>
+                <p className="text-white">{ad.offerType || 'Designer'}</p>
+              </div>
+              <div>
+                <p className="text-zinc-400">Payment</p>
+                <p className="text-white">{ad.priceAmount ? `${ad.priceAmount} ${ad.priceCurrency || 'USDC'}` : 'Open'}</p>
+              </div>
+              <div>
+                <p className="text-zinc-400">Chain</p>
+                <p className="text-white">{ad.chain || 'Movement'}</p>
+              </div>
+              <div>
+                <p className="text-zinc-400">Posted</p>
+                <p className="text-white">{ad.createdAt ? new Date(ad.createdAt).toLocaleDateString() : 'Recently'}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                to={`/marketplace/ads/${ad.id}/apply`}
+                className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
+              >
+                Send a message
+              </Link>
+              <button className="rounded-full border border-white/10 px-6 py-3 text-sm text-zinc-300">Save to watchlist</button>
             </div>
           </div>
         </div>
+
+        <div className="rounded-3xl border border-white/10 bg-black/70 p-6">
+          <h2 className="text-lg font-semibold">Because you liked this ad</h2>
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div key={idx} className="rounded-2xl border border-white/10 bg-black/60 p-3">
+                <div className="h-24 rounded-xl bg-white/5" />
+                <div className="mt-3 text-sm font-semibold">Recommended Ad</div>
+                <div className="text-xs text-zinc-400">View details</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-black/70 p-6">
+          <h2 className="text-lg font-semibold">Comments</h2>
+          <div className="mt-4 space-y-3">
+            {['Looks solid', 'What is the budget?', 'Can you resume immediately?'].map((text, idx) => (
+              <div key={idx} className="rounded-2xl border border-white/10 bg-black/60 p-3 text-sm text-zinc-300">
+                {text}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <input className="flex-1 rounded-full bg-white/5 px-4 py-2 text-sm" placeholder="Write a comment..." />
+            <button className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-2 text-sm font-semibold text-black">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
   );

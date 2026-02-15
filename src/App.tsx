@@ -17,6 +17,8 @@ import { PFPGenerator } from './components/PFP/PFPGenerator';
 import { AnimatedPFPIcon } from './components/PFP/AnimatedPFPIcon';
 import MarketDashboard from './components/Marketplace/MarketDashboard';
 import MarketplaceAdDetail from './components/Marketplace/MarketplaceAdDetail';
+import MarketplaceApply from './components/Marketplace/MarketplaceApply';
+import MarketplaceMessages from './components/Marketplace/MarketplaceMessages';
 import { TwoPhaseTesting } from './components/TwoPhaseTesting';
 import { useAuth } from './hooks/useAuth';
 import { ROUTES } from './utils/constants';
@@ -146,6 +148,9 @@ const AppContent: React.FC = () => {
       <Route path="/pfp" element={<ProtectedRoute><PFPGenerator /></ProtectedRoute>} />
       <Route path="/market" element={<MarketDashboard />} />
       <Route path="/marketplace/ads/:id" element={<MarketplaceAdDetail />} />
+      <Route path="/marketplace/ads/:id/apply" element={<ProtectedRoute><MarketplaceApply /></ProtectedRoute>} />
+      <Route path="/messages" element={<ProtectedRoute><MarketplaceMessages /></ProtectedRoute>} />
+      <Route path="/messages/:threadId" element={<ProtectedRoute><MarketplaceMessages /></ProtectedRoute>} />
       <Route path="/two-phase-test" element={<TwoPhaseTesting />} />
       <Route path={ROUTES.admin} element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       {/* User listing public detail route */}

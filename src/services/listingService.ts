@@ -50,7 +50,7 @@ export const listingService = {
   },
   async refresh(contractAddress: string, chain: string = 'SOLANA') {
     const backendUrl = getBackendUrl();
-    const token = localStorage.getItem('cto_jwt_token');
+    const token = localStorage.getItem('cto_auth_token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     const res = await axios.post(`${backendUrl}/api/v1/listing/refresh`, { contractAddress, chain }, { headers });
     return res.data;

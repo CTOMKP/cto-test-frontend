@@ -65,10 +65,39 @@ export const marketplaceService = {
     return responseData?.items || responseData || [];
   },
 
+  async listTrending(params?: { page?: number; limit?: number }) {
+    const search = new URLSearchParams();
+    if (params?.page) search.set('page', String(params.page));
+    if (params?.limit) search.set('limit', String(params.limit));
+    const qs = search.toString();
+    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/trending${qs ? `?${qs}` : ''}`);
+    const responseData = res.data?.data || res.data;
+    return responseData?.items || responseData || [];
+  },
+
+  async listForYou(params?: { page?: number; limit?: number }) {
+    const search = new URLSearchParams();
+    if (params?.page) search.set('page', String(params.page));
+    if (params?.limit) search.set('limit', String(params.limit));
+    const qs = search.toString();
+    const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/for-you${qs ? `?${qs}` : ''}`, {
+      headers: authHeaders(),
+    });
+    const responseData = res.data?.data || res.data;
+    return responseData?.items || responseData || [];
+  },
+
   async getPublicAd(id: string) {
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/${id}`);
     const responseData = res.data?.data || res.data;
     return responseData?.data || responseData;
+  },
+
+  async shareAd(id: string) {
+    const res = await axios.post(`${backendUrl}/api/v1/marketplace/ads/${id}/share`, {}, {
+      headers: authHeaders(),
+    });
+    return res.data?.data || res.data;
   },
 };
 

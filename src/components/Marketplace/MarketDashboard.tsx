@@ -9,10 +9,11 @@ import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-w
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { pfpService } from '../../services/pfpService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
+import MarketplaceTopNav from './MarketplaceTopNav';
 
 const MARKETPLACE_ASSET_BASE = '/marketplace';
 
-type StepKey = 'market' | 'category' | 'details' | 'preview' | 'payment' | 'success' | 'summary' | 'pending' | 'live';
+type StepKey = 'market' | 'category' | 'details' | 'preview' | 'payment' | 'success' | 'summary' | 'live';
 type PostType = 'LOOKING_FOR' | 'OFFERING';
 type Tier = 'FREE' | 'PLUS' | 'PREMIUM';
 
@@ -84,7 +85,7 @@ const DEFAULT_DRAFT: AdDraft = {
   blockchainFocus: 'Solana',
   roleType: 'Designer',
   toolsStack: 'Adobe Illustrator',
-  paymentType: 'USDT',
+  paymentType: 'USDC',
   amount: '',
   deadline: '',
   noDeadline: false,
@@ -109,7 +110,7 @@ const DEFAULT_PRICING: PricingRow[] = [
 
 const ROLE_OPTIONS = ['Designer', 'Developer', 'Community Lead', 'CTO', 'Project Manager'];
 const TOOL_OPTIONS = ['Adobe Illustrator', 'Figma', 'Photoshop', 'Premiere Pro', 'Notion'];
-const PAYMENT_TYPES = ['USDT', 'USDC', 'Revenue Share'];
+const PAYMENT_TYPES = ['USDC'];
 const BLOCKCHAIN_OPTIONS = ['Solana', 'Base', 'Ethereum', 'Movement', 'Polygon'];
 const isFeatured = (ad: { featuredPlacement?: boolean; featuredUntil?: string }) => {
   if (ad?.featuredPlacement) return true;
@@ -155,6 +156,9 @@ export default function MarketDashboard() {
   const [pricing, setPricing] = useState<PricingRow[]>(DEFAULT_PRICING);
   const [publicAds, setPublicAds] = useState<any[]>([]);
   const [publicAdsLoading, setPublicAdsLoading] = useState(false);
+  const [marketTab, setMarketTab] = useState<'forYou' | 'new' | 'trending'>('forYou');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('');
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletAddress, setWalletAddress] = useState('');
   const [walletPublicKey, setWalletPublicKey] = useState('');
@@ -190,21 +194,37 @@ export default function MarketDashboard() {
   useEffect(() => {
     let mounted = true;
     setPublicAdsLoading(true);
-    marketplaceService
-      .listPublic({ page: 1, limit: 24 })
-      .then((items) => {
+    const load = async () => {
+      try {
+        if (marketTab === 'trending') {
+          const items = await marketplaceService.listTrending({ page: 1, limit: 24 });
+          if (mounted) setPublicAds(Array.isArray(items) ? items : []);
+          return;
+        }
+        if (marketTab === 'forYou') {
+          try {
+            const items = await marketplaceService.listForYou({ page: 1, limit: 24 });
+            if (mounted) setPublicAds(Array.isArray(items) ? items : []);
+            return;
+          } catch {
+            const items = await marketplaceService.listPublic({ page: 1, limit: 24 });
+            if (mounted) setPublicAds(Array.isArray(items) ? items : []);
+            return;
+          }
+        }
+        const items = await marketplaceService.listPublic({ page: 1, limit: 24 });
         if (mounted) setPublicAds(Array.isArray(items) ? items : []);
-      })
-      .catch(() => {
+      } catch {
         if (mounted) setPublicAds([]);
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setPublicAdsLoading(false);
-      });
+      }
+    };
+    load();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [marketTab]);
 
   useEffect(() => {
     if (subCategoryInput) {
@@ -248,8 +268,22 @@ export default function MarketDashboard() {
   const subOptions = useMemo(() => SUBCATEGORY_MAP[draft.category] || [], [draft.category]);
   const maxImages = draft.tier === 'FREE' ? 3 : 5;
   const orderedAds = useMemo(() => {
-    const list = [...publicAds];
+    const query = searchTerm.trim().toLowerCase();
+    const list = publicAds.filter((ad) => {
+      const title = (ad.title || '').toLowerCase();
+      const category = (ad.category || '').toLowerCase();
+      const sub = (ad.subCategory || '').toLowerCase();
+      const role = (ad.offerType || '').toLowerCase();
+      const matchesQuery = !query || title.includes(query) || category.includes(query) || sub.includes(query);
+      const matchesRole = !roleFilter || role === roleFilter.toLowerCase();
+      return matchesQuery && matchesRole;
+    });
     return list.sort((a, b) => {
+      if (marketTab === 'trending') {
+        const scoreA = (a.messageCount || 0) * 3 + (a.viewCount || 0);
+        const scoreB = (b.messageCount || 0) * 3 + (b.viewCount || 0);
+        if (scoreA !== scoreB) return scoreB - scoreA;
+      }
       const aFeatured = isFeatured(a);
       const bFeatured = isFeatured(b);
       if (aFeatured !== bFeatured) return aFeatured ? -1 : 1;
@@ -260,7 +294,7 @@ export default function MarketDashboard() {
       const bTime = new Date(b.createdAt || 0).getTime();
       return bTime - aTime;
     });
-  }, [publicAds]);
+  }, [publicAds, searchTerm, roleFilter, marketTab]);
 
   const toCloudFrontUrl = (url?: string | null) => {
     if (!url || typeof url !== 'string') return undefined;
@@ -311,6 +345,16 @@ export default function MarketDashboard() {
 
   const updateDraft = (next: Partial<AdDraft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
+  };
+
+  const handleShare = async () => {
+    try {
+      if (adId) {
+        await marketplaceService.shareAd(adId);
+      }
+    } catch (error) {
+      // ignore
+    }
   };
 
   const uploadImages = useCallback(async () => {
@@ -450,6 +494,7 @@ export default function MarketDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <MarketplaceTopNav />
       <div className="mx-auto w-full max-w-6xl px-6 py-10">
         {step === 'market' && (
           <div className="space-y-10">
@@ -472,18 +517,49 @@ export default function MarketDashboard() {
 
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex flex-wrap gap-2">
-                {['For you', 'New', 'Top', 'Trending'].map((tag) => (
-                  <span key={tag} className="rounded-full border border-white/10 px-3 py-1 text-xs text-zinc-400">
-                    {tag}
-                  </span>
+                {[
+                  { key: 'forYou', label: 'For you' },
+                  { key: 'new', label: 'New' },
+                  { key: 'trending', label: 'Trending' },
+                ].map((tag) => (
+                  <button
+                    key={tag.key}
+                    onClick={() => setMarketTab(tag.key as any)}
+                    className={`rounded-full px-4 py-1 text-xs ${
+                      marketTab === tag.key
+                        ? 'bg-white text-black'
+                        : 'border border-white/10 text-zinc-400'
+                    }`}
+                  >
+                    {tag.label}
+                  </button>
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <input className="rounded-full bg-white/10 px-4 py-2 text-sm text-white" placeholder="Search ads" />
+                <input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="rounded-full bg-white/10 px-4 py-2 text-sm text-white"
+                  placeholder="Search Token, Contract or Users"
+                />
                 <button className="rounded-full border border-white/10 px-4 py-2 text-xs uppercase tracking-[0.3em] text-zinc-400">
                   Filters
                 </button>
               </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {['Developer', 'Designer', 'Community Lead', 'CTO', 'Project Manager'].map((role) => (
+                <button
+                  key={role}
+                  onClick={() => setRoleFilter(roleFilter === role ? '' : role)}
+                  className={`rounded-full px-4 py-1 text-xs ${
+                    roleFilter === role ? 'bg-white text-black' : 'bg-white/5 text-zinc-400'
+                  }`}
+                >
+                  {role}
+                </button>
+              ))}
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -1035,13 +1111,11 @@ export default function MarketDashboard() {
 
               <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Payment Method</p>
-                <div className="mt-3 space-y-2">
-                  {['Fund with USDC', 'Fund with APT', 'Fund with Sol'].map((method, idx) => (
-                    <label key={method} className="flex items-center gap-2 text-zinc-300">
-                      <input type="radio" name="payment-method" defaultChecked={idx === 0} />
-                      {method}
-                    </label>
-                  ))}
+                <div className="mt-3">
+                  <label className="flex items-center gap-2 text-zinc-300">
+                    <input type="radio" name="payment-method" defaultChecked />
+                    Fund with USDC
+                  </label>
                 </div>
               </div>
 
@@ -1082,7 +1156,7 @@ export default function MarketDashboard() {
             <p className="mt-3 text-sm text-zinc-400">Congratulations! Your payment has been received.</p>
             <button
               className="mt-8 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
-              onClick={() => setStep('pending')}
+              onClick={() => setStep('summary')}
             >
               Continue
             </button>
@@ -1090,28 +1164,6 @@ export default function MarketDashboard() {
         )}
 
 
-        {step === 'pending' && (
-          <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/80 p-12 text-center">
-            <h2 className="text-2xl font-semibold">You Are Almost Live</h2>
-            <p className="mt-3 text-sm text-zinc-400">
-              Give us a few minutes. Admin is reviewing your ad and it will go live once approved.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <button
-                className="rounded-full border border-white/10 px-6 py-3 text-sm"
-                onClick={() => (window.location.href = '/profile')}
-              >
-                Go To Profile
-              </button>
-              <button
-                className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
-                onClick={() => setStep('market')}
-              >
-                Back To Marketplace
-              </button>
-            </div>
-          </div>
-        )}
         {step === 'summary' && (
           <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/80 p-8">
             <div className="flex items-center justify-between">
@@ -1169,7 +1221,11 @@ export default function MarketDashboard() {
               <div className="mt-3 text-sm text-blue-400">https://ctomarketplace.com/listing/bagzilla</div>
               <div className="mt-4 flex justify-center gap-3">
                 {['Reddit', 'Meta', 'X', 'Copy'].map((label) => (
-                  <button key={label} className="rounded-full border border-white/10 px-4 py-2 text-xs text-zinc-400">
+                  <button
+                    key={label}
+                    onClick={handleShare}
+                    className="rounded-full border border-white/10 px-4 py-2 text-xs text-zinc-400"
+                  >
                     {label}
                   </button>
                 ))}
