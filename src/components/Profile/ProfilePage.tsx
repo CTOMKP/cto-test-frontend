@@ -16,6 +16,7 @@ import axios from 'axios';
 import FundingModal from '../Funding/FundingModal';
 import { HarvestGrape } from '../PFP/HarvestGrape';
 import xpService from '../../services/xpService';
+import NotificationsBell from '../Notifications/NotificationsBell';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -297,7 +298,8 @@ export const ProfilePage: React.FC = () => {
               <p className="text-gray-600">Welcome back, {user.email}</p>
               <p className="text-sm text-gray-500">XP Balance: {xpBalance ?? user.xpBalance ?? 0}</p>
             </div>
-            <div className="flex space-x-3">
+            <div className="flex space-x-3 items-center">
+              <NotificationsBell />
               <a href="/" className="btn-secondary">Back to Listings</a>
               <button
                 onClick={() => navigate('/bridge')}
