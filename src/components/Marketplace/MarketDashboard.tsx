@@ -1,4 +1,4 @@
-
+﻿
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -111,40 +111,6 @@ const ROLE_OPTIONS = ['Designer', 'Developer', 'Community Lead', 'CTO', 'Project
 const TOOL_OPTIONS = ['Adobe Illustrator', 'Figma', 'Photoshop', 'Premiere Pro', 'Notion'];
 const PAYMENT_TYPES = ['USDT', 'USDC', 'Revenue Share'];
 const BLOCKCHAIN_OPTIONS = ['Solana', 'Base', 'Ethereum', 'Movement', 'Polygon'];
-const SAMPLE_ADS = [
-  {
-    id: 'dev-cta',
-    title: 'Need a Solidity CTO?',
-    category: 'Developers',
-    subCategory: 'Smart Contract Dev',
-    cta: 'Start a takeover with a verified CTO.',
-    badge: 'Featured',
-    featuredPlacement: true,
-    featuredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    image: `${MARKETPLACE_ASSET_BASE}/marketplace-full.png`,
-  },
-  {
-    id: 'design-ux',
-    title: 'Brand refresh in 72 hours',
-    category: 'Design & Branding',
-    subCategory: 'UI/UX Designer',
-    cta: 'Launch-ready visuals for your meme.',
-    badge: 'Hot',
-    featuredUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-    image: `${MARKETPLACE_ASSET_BASE}/marketplace.png`,
-  },
-  {
-    id: 'marketing',
-    title: 'Campaign launch squad',
-    category: 'Shilling & Marketing',
-    subCategory: 'Growth Hacker',
-    cta: 'Channel growth, influencer outreach, shill list.',
-    badge: 'New',
-    featuredUntil: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-    image: `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`,
-  },
-];
-
 const isFeatured = (ad: { featuredPlacement?: boolean; featuredUntil?: string }) => {
   if (ad?.featuredPlacement) return true;
   if (!ad?.featuredUntil) return false;
@@ -152,27 +118,25 @@ const isFeatured = (ad: { featuredPlacement?: boolean; featuredUntil?: string })
   return Number.isFinite(ts) && ts > Date.now();
 };
 
-const getCountdownLabel = (dateStr?: string | null) => {
+const formatCountdown = (dateStr?: string | null, nowTs?: number) => {
   if (!dateStr) return null;
   const target = new Date(dateStr).getTime();
   if (!Number.isFinite(target)) return null;
-  const diff = target - Date.now();
+  const now = typeof nowTs === "number" ? nowTs : Date.now();
+  const diff = target - now;
   if (diff <= 0) return null;
-  const hours = Math.ceil(diff / 3600000);
-  if (hours >= 24) {
-    const days = Math.ceil(hours / 24);
-    return `${days}d left`;
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  if (hours > 0) {
+    const hh = String(hours).padStart(2, "0");
+    return `${days}d : ${hh}h : ${mm}m : ${ss}s`;
   }
-  return `${hours}h left`;
-};
-
-const getDaysLeft = (dateStr?: string | null) => {
-  if (!dateStr) return null;
-  const target = new Date(dateStr).getTime();
-  if (!Number.isFinite(target)) return null;
-  const diff = target - Date.now();
-  if (diff <= 0) return 0;
-  return Math.ceil(diff / 86400000);
+  return `${days}d : ${mm}m : ${ss}s`;
 };
 
 const getDaysAgo = (dateStr?: string | null) => {
@@ -185,6 +149,7 @@ const getDaysAgo = (dateStr?: string | null) => {
 };
 
 export default function MarketDashboard() {
+  const [now, setNow] = useState(() => Date.now());
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
   const [pricing, setPricing] = useState<PricingRow[]>(DEFAULT_PRICING);
@@ -203,6 +168,11 @@ export default function MarketDashboard() {
 
   const { user: privyUser } = usePrivyAuth();
   const { signRawHash } = useSignRawHash();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -277,7 +247,20 @@ export default function MarketDashboard() {
 
   const subOptions = useMemo(() => SUBCATEGORY_MAP[draft.category] || [], [draft.category]);
   const maxImages = draft.tier === 'FREE' ? 3 : 5;
-  const adsToRender = publicAds.length > 0 ? publicAds : SAMPLE_ADS;
+  const orderedAds = useMemo(() => {
+    const list = [...publicAds];
+    return list.sort((a, b) => {
+      const aFeatured = isFeatured(a);
+      const bFeatured = isFeatured(b);
+      if (aFeatured !== bFeatured) return aFeatured ? -1 : 1;
+      const aSpot = !!a.homepageSpotlight;
+      const bSpot = !!b.homepageSpotlight;
+      if (aSpot !== bSpot) return aSpot ? -1 : 1;
+      const aTime = new Date(a.createdAt || 0).getTime();
+      const bTime = new Date(b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [publicAds]);
 
   const toCloudFrontUrl = (url?: string | null) => {
     if (!url || typeof url !== 'string') return undefined;
@@ -510,41 +493,57 @@ export default function MarketDashboard() {
               {!publicAdsLoading && publicAds.length === 0 && (
                 <div className="col-span-full text-center text-sm text-white/60">No ads yet.</div>
               )}
-              {publicAds.map((ad) => {
+                            {orderedAds.map((ad) => {
                 const imageUrl =
                   toCloudFrontUrl(ad.image || ad.images?.[0]) ||
                   `${MARKETPLACE_ASSET_BASE}/ads-thumbnail.png`;
-                const daysLeft = getDaysLeft(ad.expiresAt);
                 const postedDays = getDaysAgo(ad.createdAt);
-                const featuredCountdown = getCountdownLabel(ad.featuredUntil);
+                const expiryCountdown = formatCountdown(ad.expiresAt, now);
+                const featuredCountdown = formatCountdown(ad.featuredUntil, now);
                 const spotlight = !!ad.homepageSpotlight;
+                const featured = isFeatured(ad);
+
                 const card = (
-                  <div className={`rounded-3xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10 ${spotlight ? 'lg:col-span-2' : ''}`}>
-                    <div className={`relative overflow-hidden rounded-2xl border border-white/10 ${spotlight ? 'h-56' : 'h-40'}`}>
+                  <div
+                    className={`rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-black/80 p-5 transition ${
+                      spotlight ? 'lg:col-span-2' : ''
+                    }`}
+                  >
+                    <div
+                      className={`relative overflow-hidden rounded-2xl border border-white/5 ${
+                        spotlight ? 'h-56' : 'h-40'
+                      }`}
+                    >
                       <img
                         src={imageUrl}
                         alt={ad.title}
                         className="h-full w-full object-cover"
                         loading="lazy"
                       />
-                      <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white">
-                        {ad.badge || (ad.featuredPlacement ? 'Featured' : 'Live')}
-                      </span>
+                      {expiryCountdown && (
+                        <span className="absolute left-3 top-3 rounded-full bg-orange-500/90 px-3 py-1 text-xs uppercase tracking-[0.2em] text-black">
+                          {expiryCountdown}
+                        </span>
+                      )}
+                      {featured && (
+                        <span className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-300">
+                          Featured
+                        </span>
+                      )}
                       {featuredCountdown && (
-                        <span className="absolute right-3 top-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white">
+                        <span className="absolute right-3 bottom-3 rounded-full bg-purple-500/80 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white">
                           {featuredCountdown}
                         </span>
                       )}
                     </div>
                     <div className="mt-4 space-y-2">
                       <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                        {ad.category || 'Marketplace'} � {ad.subCategory || ad.category || 'General'}
+                        {ad.category || 'Marketplace'} · {ad.subCategory || ad.category || 'General'}
                       </p>
                       <h3 className="text-lg font-semibold">{ad.title}</h3>
                       <p className="text-sm text-zinc-400">{ad.cta || ad.description || 'View details'}</p>
                       <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
                         {typeof postedDays === 'number' && <span>Posted {postedDays}d ago</span>}
-                        {typeof daysLeft === 'number' && <span>{daysLeft}d left</span>}
                       </div>
                     </div>
                   </div>
@@ -661,8 +660,12 @@ export default function MarketDashboard() {
                         key={`image-slot-${idx}`}
                         className="flex h-28 flex-col items-center justify-center rounded-2xl border border-white/10 bg-black/60 text-xs text-zinc-500"
                       >
-                        {preview ? (
-                          <img src={preview} alt="preview" className="h-full w-full rounded-2xl object-cover" />
+                                                {preview ? (
+                          <img
+                            src={preview}
+                            alt={`Upload ${idx + 1}`}
+                            className="h-full w-full rounded-2xl object-cover"
+                          />
                         ) : (
                           <span>Upload image</span>
                         )}
@@ -904,10 +907,16 @@ export default function MarketDashboard() {
                 <p className="mt-1 text-sm text-white">{draft.adTitle || 'CTO Wanted for Aptos Revival Project'}</p>
                 <p className="mt-4 text-xs uppercase tracking-[0.3em] text-zinc-400">Upload Images</p>
                 <div className="mt-3 flex gap-3">
-                  {(draft.imagePreviews.length ? draft.imagePreviews : [`${MARKETPLACE_ASSET_BASE}/preview-ads.png`]).map((img, idx) => (
-                    <img key={`prev-${idx}`} src={img} alt="preview" className="h-24 w-24 rounded-xl object-cover" />
-                  ))}
-                </div>
+  {(draft.imagePreviews.length ? draft.imagePreviews : [`${MARKETPLACE_ASSET_BASE}/preview-ads.png`]).map((img, idx) => (
+    <img
+      key={`${img}-${idx}`}
+      src={img}
+      alt={`Preview ${idx + 1}`}
+      className="h-24 w-24 rounded-xl object-cover"
+      loading="lazy"
+    />
+  ))}
+</div>
                 <p className="mt-4 text-xs uppercase tracking-[0.3em] text-zinc-400">Project Description</p>
                 <p className="mt-1 text-sm text-zinc-300">{draft.description || 'Your description will appear here.'}</p>
                 <div className="mt-6 grid gap-3 md:grid-cols-2">
@@ -1171,9 +1180,15 @@ export default function MarketDashboard() {
             </div>
             <div className="mt-8 flex justify-center">
               <div className="w-full max-w-xs rounded-3xl border border-white/10 bg-black/60 p-4 text-left">
-                <div className="relative h-40 overflow-hidden rounded-2xl">
-                  <img src={`${MARKETPLACE_ASSET_BASE}/marketplace-full.png`} alt="ad" className="h-full w-full object-cover" />
-                  <span className="absolute left-3 top-3 rounded-full bg-black/70 px-2 py-1 text-xs text-amber-400">10d : 28m : 34s</span>
+                                <div className="relative h-40 overflow-hidden rounded-2xl">
+                  <img
+                    src={`${MARKETPLACE_ASSET_BASE}/marketplace-full.png`}
+                    alt="Market ad"
+                    className="h-full w-full object-cover"
+                  />
+                  <span className="absolute left-3 top-3 rounded-full bg-orange-500/90 px-3 py-1 text-xs uppercase tracking-[0.2em] text-black">
+                    10d : 28m : 34s
+                  </span>
                 </div>
                 <div className="mt-3 text-sm font-semibold">Liquidity Partner Needed</div>
                 <div className="text-xs text-zinc-400">by @DegenFund</div>
@@ -1200,6 +1215,22 @@ export default function MarketDashboard() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
