@@ -75,6 +75,14 @@ export default function NotificationsBell() {
     };
   }, [backendUrl, token]);
 
+  useEffect(() => {
+    const handler = () => {
+      if (token) loadNotifications();
+    };
+    window.addEventListener('cto-notifications-ping', handler as EventListener);
+    return () => window.removeEventListener('cto-notifications-ping', handler as EventListener);
+  }, [token]);
+
   const handleClickNotification = async (n: any) => {
     try {
       if (!n.readAt) {

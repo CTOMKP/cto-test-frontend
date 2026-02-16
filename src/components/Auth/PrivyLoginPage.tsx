@@ -186,6 +186,11 @@ export const PrivyLoginPage: React.FC = () => {
       localStorage.setItem('cto_auth_token', responseData.token);
       localStorage.setItem('cto_user_id', responseData.user.id.toString());
       localStorage.setItem('cto_user_email', responseData.user.email);
+      try {
+        window.dispatchEvent(new Event('cto-notifications-ping'));
+      } catch {
+        // ignore
+      }
       
       if (responseData.user.avatarUrl) {
         const cloudfrontUrl = getCloudFrontUrl(responseData.user.avatarUrl);
