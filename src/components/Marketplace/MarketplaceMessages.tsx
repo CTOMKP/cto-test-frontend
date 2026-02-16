@@ -92,6 +92,10 @@ export default function MarketplaceMessages() {
   useEffect(() => {
     if (!activeThread) return;
     messagesService.getThread(activeThread.id).then((res: any) => {
+      const convo = res?.conversation || res?.thread || res;
+      if (convo?.id) {
+        setActiveThread((prev) => ({ ...(prev || {}), ...convo }));
+      }
       setMessages(res?.messages || []);
       messagesService.markRead(activeThread.id).catch(() => null);
     });
