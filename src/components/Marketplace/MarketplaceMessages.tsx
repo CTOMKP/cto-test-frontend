@@ -45,6 +45,7 @@ export default function MarketplaceMessages() {
   const [currentEscrow, setCurrentEscrow] = useState<any>(null);
   const [showEscrowProposed, setShowEscrowProposed] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
 
@@ -144,6 +145,10 @@ export default function MarketplaceMessages() {
     return isPoster ? activeThread.applicant : activeThread.poster;
   }, [activeThread, isPoster]);
 
+  useEffect(() => {
+    setAvatarError(false);
+  }, [otherUser?.id]);
+
   const handleSend = async () => {
     if (!activeThread || !input.trim()) return;
     const res = await messagesService.sendMessage(activeThread.id, input.trim());
@@ -240,11 +245,12 @@ export default function MarketplaceMessages() {
 
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
           <div className="flex flex-col items-center text-center">
-            {otherUser?.avatarUrl ? (
+            {otherUser?.avatarUrl && !avatarError ? (
               <img
                 src={otherUser.avatarUrl}
                 alt="Profile"
                 className="h-20 w-20 rounded-full object-cover border border-white/10"
+                onError={() => setAvatarError(true)}
               />
             ) : (
               <div className="h-20 w-20 rounded-full bg-white/10" />

@@ -182,6 +182,27 @@ export const ProfilePage: React.FC = () => {
     }
   }, [isAuthenticated, user?.id, backendUrl]);
 
+  // If localStorage has an avatar but backend is missing it, sync once
+  useEffect(() => {
+    const syncAvatarToBackend = async () => {
+      if (!isAuthenticated || !user?.id) return;
+      if (user?.avatarUrl) return;
+      const storedAvatar =
+        localStorage.getItem('cto_user_avatar_url') || localStorage.getItem('profile_avatar_url');
+      if (!storedAvatar) return;
+      try {
+        await axios.put(
+          `${backendUrl}/api/v1/auth/users/me`,
+          { avatarUrl: storedAvatar },
+          { headers: { ...authHeaders(), 'Content-Type': 'application/json' } }
+        );
+      } catch {
+        // best-effort
+      }
+    };
+    syncAvatarToBackend();
+  }, [isAuthenticated, user?.id, user?.avatarUrl, backendUrl]);
+
   // Persist to localStorage for temporary durability (until backend profile update exists)
   useEffect(() => {
     if (avatarUrl) {
