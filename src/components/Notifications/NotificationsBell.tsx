@@ -7,16 +7,15 @@ export default function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('cto_auth_token'));
   const backendUrl = getBackendUrl();
 
   const loadNotifications = async () => {
     try {
       const res = await notificationsService.list();
       const nextItems = res?.items || [];
-      if (nextItems.length > 0) {
-        setItems(nextItems);
-        setUnreadCount(nextItems.filter((n: any) => !n.readAt).length);
-      }
+      setItems(nextItems);
+      setUnreadCount(nextItems.filter((n: any) => !n.readAt).length);
     } catch {
       // best-effort
     }
@@ -29,7 +28,27 @@ export default function NotificationsBell() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('cto_auth_token');
+    if (token) loadNotifications();
+  }, [token]);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cto_auth_token') {
+        setToken(e.newValue);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    const interval = setInterval(() => {
+      const next = localStorage.getItem('cto_auth_token');
+      if (next !== token) setToken(next);
+    }, 1000);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(interval);
+    };
+  }, [token]);
+
+  useEffect(() => {
     if (!token) return;
     const socket: Socket = io(`${backendUrl}/ws`, {
       transports: ['polling', 'websocket'],
@@ -54,7 +73,7 @@ export default function NotificationsBell() {
     return () => {
       socket.disconnect();
     };
-  }, [backendUrl]);
+  }, [backendUrl, token]);
 
   const handleClickNotification = async (n: any) => {
     try {
