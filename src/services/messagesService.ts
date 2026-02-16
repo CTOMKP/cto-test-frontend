@@ -49,6 +49,15 @@ export const messagesService = {
     );
     return res.data?.data || res.data;
   },
+
+  async toggleReaction(messageId: string, emoji: string) {
+    const res = await axios.post(
+      `${backendUrl}/api/v1/messages/reactions/${messageId}`,
+      { emoji },
+      { headers: authHeaders() }
+    );
+    return res.data?.data || res.data;
+  },
 };
 
 export default messagesService;

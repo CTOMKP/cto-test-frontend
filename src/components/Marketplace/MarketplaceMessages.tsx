@@ -42,6 +42,7 @@ export default function MarketplaceMessages() {
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [escrowModalOpen, setEscrowModalOpen] = useState(false);
   const [escrowViewOpen, setEscrowViewOpen] = useState(false);
   const [currentEscrow, setCurrentEscrow] = useState<any>(null);
@@ -130,6 +131,13 @@ export default function MarketplaceMessages() {
         setMessages((prev) => [...prev, payload.message]);
       }
     });
+    socket.on('messages.reaction', (payload: any) => {
+      if (payload?.conversationId !== activeThread?.id) return;
+      if (!payload?.messageId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.messageId ? { ...m, reactions: payload.reactions || [] } : m)),
+      );
+    });
     socket.on('notifications.new', (payload: any) => {
       if (!mounted) return;
       if (payload?.type !== 'ESCROW') return;
@@ -203,6 +211,31 @@ export default function MarketplaceMessages() {
     '❤️','💔','💙','💚','💛','💜','🖤','🤍','🤎','💖'
   ];
 
+  const groupReactions = (reactions: any[] = []) => {
+    const map = new Map<string, { emoji: string; count: number }>();
+    reactions.forEach((r) => {
+      const key = r.emoji;
+      const prev = map.get(key);
+      map.set(key, { emoji: key, count: prev ? prev.count + 1 : 1 });
+    });
+    return Array.from(map.values());
+  };
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    try {
+      const res = await messagesService.toggleReaction(messageId, emoji);
+      if (res?.reactions) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, reactions: res.reactions } : m)),
+        );
+      }
+    } catch {
+      // ignore
+    } finally {
+      setReactionPickerFor(null);
+    }
+  };
+
   const openEscrow = () => {
     setEscrowModalOpen(true);
   };
@@ -261,13 +294,56 @@ export default function MarketplaceMessages() {
           </div>
           <div className="flex-1 mt-4 space-y-4 overflow-y-auto">
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm ${
-                  m.senderId === userId ? 'ml-auto bg-emerald-100 text-black' : 'bg-white text-black'
-                }`}
-              >
-                {m.body}
+              <div key={m.id} className={`flex ${m.senderId === userId ? 'justify-end' : 'justify-start'}`}>
+                <div className="max-w-[70%]">
+                  <div
+                    className={`rounded-2xl px-4 py-3 text-sm ${
+                      m.senderId === userId ? 'ml-auto bg-emerald-100 text-black' : 'bg-white text-black'
+                    }`}
+                  >
+                    {m.body}
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setReactionPickerFor((prev) => (prev === m.id ? null : m.id))}
+                        className="text-xs text-black/60 hover:text-black"
+                        title="React"
+                      >
+                        😊
+                      </button>
+                    </div>
+                  </div>
+                  {reactionPickerFor === m.id && (
+                    <div className="mt-2 rounded-2xl border border-white/10 bg-black/90 p-2">
+                      <div className="grid grid-cols-8 gap-2">
+                        {emojiList.map((e) => (
+                          <button
+                            key={`${m.id}-${e}`}
+                            type="button"
+                            className="h-7 w-7 rounded-lg bg-white/5 text-sm hover:bg-white/10"
+                            onClick={() => toggleReaction(m.id, e)}
+                          >
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {m.reactions && m.reactions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {groupReactions(m.reactions).map((r) => (
+                        <button
+                          key={`${m.id}-${r.emoji}`}
+                          type="button"
+                          onClick={() => toggleReaction(m.id, r.emoji)}
+                          className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs text-white"
+                        >
+                          {r.emoji} {r.count}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
             {loadingMessages && (
