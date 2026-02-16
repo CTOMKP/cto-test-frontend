@@ -168,6 +168,12 @@ export default function MarketplaceMessages() {
     setAvatarError(false);
   }, [otherUser?.id]);
 
+  useEffect(() => {
+    if (avatarSrc) {
+      setAvatarError(false);
+    }
+  }, [avatarSrc]);
+
   const handleSend = async () => {
     if (!activeThread || !input.trim()) return;
     const res = await messagesService.sendMessage(activeThread.id, input.trim());
@@ -266,6 +272,7 @@ export default function MarketplaceMessages() {
           <div className="flex flex-col items-center text-center">
             {avatarSrc && !avatarError ? (
               <img
+                key={avatarSrc}
                 src={avatarSrc}
                 alt="Profile"
                 className="h-20 w-20 rounded-full object-cover border border-white/10"
