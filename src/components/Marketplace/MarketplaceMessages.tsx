@@ -149,6 +149,14 @@ export default function MarketplaceMessages() {
     return isPoster ? activeThread.applicant : activeThread.poster;
   }, [activeThread, isPoster]);
 
+  const fallbackAvatarUrl = useMemo(() => {
+    return (
+      otherUser?.avatarUrl ||
+      activeThread?.ad?.user?.avatarUrl ||
+      ''
+    );
+  }, [otherUser?.avatarUrl, activeThread?.ad?.user?.avatarUrl]);
+
   useEffect(() => {
     setAvatarError(false);
   }, [otherUser?.id]);
@@ -249,9 +257,9 @@ export default function MarketplaceMessages() {
 
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
           <div className="flex flex-col items-center text-center">
-            {otherUser?.avatarUrl && !avatarError ? (
+            {fallbackAvatarUrl && !avatarError ? (
               <img
-                src={otherUser.avatarUrl}
+                src={fallbackAvatarUrl}
                 alt="Profile"
                 className="h-20 w-20 rounded-full object-cover border border-white/10"
                 onError={() => setAvatarError(true)}
