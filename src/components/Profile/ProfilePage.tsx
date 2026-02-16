@@ -89,6 +89,17 @@ export const ProfilePage: React.FC = () => {
 
     // 3) Always use server redirect endpoint for stable reads (avoid exposing presigned GETs)
     const viewUrl = `${backendUrl}/api/v1/images/view/${key}`;
+    if (kind === 'profile') {
+      try {
+        await axios.put(
+          `${backendUrl}/api/v1/auth/users/me`,
+          { avatarUrl: viewUrl },
+          { headers: { ...authHeaders(), 'Content-Type': 'application/json' } }
+        );
+      } catch {
+        // best-effort
+      }
+    }
     return { viewUrl, key, metadata };
   };
 
