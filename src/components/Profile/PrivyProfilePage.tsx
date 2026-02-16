@@ -53,6 +53,20 @@ export const PrivyProfilePage: React.FC = () => {
   }, [authenticated, user]);
 
   useEffect(() => {
+    if (!authenticated) return;
+    const token = localStorage.getItem('cto_auth_token');
+    if (!token) return;
+    const timer = setTimeout(() => {
+      try {
+        window.dispatchEvent(new Event('cto-notifications-ping'));
+      } catch {
+        // ignore
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [authenticated]);
+
+  useEffect(() => {
     const loadXp = async () => {
       try {
         const res = await xpService.getBalance();
