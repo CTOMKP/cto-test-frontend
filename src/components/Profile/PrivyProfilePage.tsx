@@ -8,6 +8,9 @@ import { MovementWalletActivity, MovementWalletRecentActivity } from '../UserLis
 import userListingsService from '../../services/userListingsService';
 import marketplaceService from '../../services/marketplaceService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
+import NotificationsBell from '../Notifications/NotificationsBell';
+import MessagesBell from '../Messages/MessagesBell';
+import xpService from '../../services/xpService';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,6 +31,7 @@ export const PrivyProfilePage: React.FC = () => {
     loading: true,
     syncing: false,
   });
+  const [xpBalance, setXpBalance] = useState<number | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
     // Check both localStorage keys (pfpService saves to cto_user_avatar_url)
     return localStorage.getItem('cto_user_avatar_url') || 
@@ -47,6 +51,21 @@ export const PrivyProfilePage: React.FC = () => {
       loadMyAds();
     }
   }, [authenticated, user]);
+
+  useEffect(() => {
+    const loadXp = async () => {
+      try {
+        const res = await xpService.getBalance();
+        const balance = res?.balance ?? res?.xpBalance ?? res?.data?.balance;
+        if (typeof balance === 'number') {
+          setXpBalance(balance);
+        }
+      } catch {
+        // best-effort
+      }
+    };
+    if (authenticated) loadXp();
+  }, [authenticated]);
 
   // Load avatar from backend
   const loadAvatarFromBackend = async () => {
@@ -398,15 +417,20 @@ export const PrivyProfilePage: React.FC = () => {
                   🎉 Welcome to CTO Marketplace!
                 </h1>
                 <p className="text-gray-600">{email}</p>
+                <p className="text-sm text-gray-500 mt-1">XP Balance: {xpBalance ?? 0}</p>
                 <p className="text-sm text-gray-400 mt-1">Privy ID: {user?.id}</p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-3">
+              <MessagesBell />
+              <NotificationsBell />
+              <button
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
 

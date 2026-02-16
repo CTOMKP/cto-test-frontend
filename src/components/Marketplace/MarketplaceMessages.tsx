@@ -102,6 +102,7 @@ export default function MarketplaceMessages() {
 
   useEffect(() => {
     if (!activeThread) return;
+    localStorage.setItem('cto_active_conversation_id', activeThread.id);
     setLoadingMessages(true);
     messagesService
       .getThread(activeThread.id)
@@ -297,21 +298,13 @@ export default function MarketplaceMessages() {
               <div key={m.id} className={`flex ${m.senderId === userId ? 'justify-end' : 'justify-start'}`}>
                 <div className="max-w-[70%]">
                   <div
-                    className={`rounded-2xl px-4 py-3 text-sm ${
+                    onClick={() => setReactionPickerFor((prev) => (prev === m.id ? null : m.id))}
+                    className={`rounded-2xl px-4 py-3 text-sm cursor-pointer ${
                       m.senderId === userId ? 'ml-auto bg-emerald-100 text-black' : 'bg-white text-black'
                     }`}
+                    title="React"
                   >
                     {m.body}
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setReactionPickerFor((prev) => (prev === m.id ? null : m.id))}
-                        className="text-xs text-black/60 hover:text-black"
-                        title="React"
-                      >
-                        😊
-                      </button>
-                    </div>
                   </div>
                   {reactionPickerFor === m.id && (
                     <div className="mt-2 rounded-2xl border border-white/10 bg-black/90 p-2">

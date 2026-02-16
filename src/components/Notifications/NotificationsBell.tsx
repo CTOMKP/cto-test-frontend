@@ -41,6 +41,13 @@ export default function NotificationsBell() {
       // fallback to polling only; list is already polled
     });
     socket.on('notifications.new', (payload: any) => {
+      const activeConvoId = localStorage.getItem('cto_active_conversation_id');
+      const isMessagesPage = window.location.pathname.startsWith('/messages');
+      const isSameConvo =
+        payload?.type === 'MESSAGE' && payload?.data?.conversationId && payload.data.conversationId === activeConvoId;
+      if (isMessagesPage && isSameConvo) {
+        return;
+      }
       setItems((prev) => [payload, ...prev]);
       setUnreadCount((prev) => prev + 1);
     });
