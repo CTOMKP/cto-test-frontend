@@ -18,6 +18,18 @@ type Thread = {
   ad: any;
   posterId: number;
   applicantId: number;
+  poster?: {
+    id: number;
+    name?: string | null;
+    avatarUrl?: string | null;
+    email?: string | null;
+  };
+  applicant?: {
+    id: number;
+    name?: string | null;
+    avatarUrl?: string | null;
+    email?: string | null;
+  };
   lastMessageAt?: string;
   lastMessagePreview?: string;
 };
