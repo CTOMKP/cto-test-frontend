@@ -41,28 +41,37 @@ export default function MarketplaceMessages() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [escrowModalOpen, setEscrowModalOpen] = useState(false);
   const [escrowViewOpen, setEscrowViewOpen] = useState(false);
   const [currentEscrow, setCurrentEscrow] = useState<any>(null);
   const [showEscrowProposed, setShowEscrowProposed] = useState(false);
   const [polling, setPolling] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [loadingThreads, setLoadingThreads] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
 
   useEffect(() => {
     let mounted = true;
-    messagesService.listThreads().then((res: any) => {
-      if (!mounted) return;
-      const items = res?.items || res || [];
-      setThreads(items);
-      if (threadId) {
-        const match = items.find((t: Thread) => t.id === threadId);
-        if (match) setActiveThread(match);
-      } else if (items[0]) {
-        setActiveThread(items[0]);
-      }
-    });
+    setLoadingThreads(true);
+    messagesService
+      .listThreads()
+      .then((res: any) => {
+        if (!mounted) return;
+        const items = res?.items || res || [];
+        setThreads(items);
+        if (threadId) {
+          const match = items.find((t: Thread) => t.id === threadId);
+          if (match) setActiveThread(match);
+        } else if (items[0]) {
+          setActiveThread(items[0]);
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoadingThreads(false);
+      });
     return () => {
       mounted = false;
     };
@@ -92,14 +101,18 @@ export default function MarketplaceMessages() {
 
   useEffect(() => {
     if (!activeThread) return;
-    messagesService.getThread(activeThread.id).then((res: any) => {
-      const convo = res?.conversation || res?.thread || res;
-      if (convo?.id) {
-        setActiveThread((prev) => ({ ...(prev || {}), ...convo }));
-      }
-      setMessages(res?.messages || []);
-      messagesService.markRead(activeThread.id).catch(() => null);
-    });
+    setLoadingMessages(true);
+    messagesService
+      .getThread(activeThread.id)
+      .then((res: any) => {
+        const convo = res?.conversation || res?.thread || res;
+        if (convo?.id) {
+          setActiveThread((prev) => ({ ...(prev || {}), ...convo }));
+        }
+        setMessages(res?.messages || []);
+        messagesService.markRead(activeThread.id).catch(() => null);
+      })
+      .finally(() => setLoadingMessages(false));
   }, [activeThread?.id]);
 
   useEffect(() => {
@@ -180,7 +193,15 @@ export default function MarketplaceMessages() {
     const msg = res?.message || res;
     setMessages((prev) => [...prev, msg]);
     setInput('');
+    setShowEmojiPicker(false);
   };
+
+  const emojiList = [
+    '😀','😁','😂','🤣','😊','😍','😘','😎','🤔','😅',
+    '🙂','😇','😉','😌','😜','🤩','🥳','😤','😭','😱',
+    '👍','👎','👏','🙌','🤝','🙏','🔥','💯','✨','🎉',
+    '❤️','💔','💙','💚','💛','💜','🖤','🤍','🤎','💖'
+  ];
 
   const openEscrow = () => {
     setEscrowModalOpen(true);
@@ -229,6 +250,7 @@ export default function MarketplaceMessages() {
                 <div className="text-zinc-400 truncate">{t.lastMessagePreview || 'No messages yet'}</div>
               </button>
             ))}
+            {loadingThreads && <div className="text-[10px] text-zinc-500">Loading...</div>}
             {polling && <div className="text-[10px] text-zinc-500">Refreshing…</div>}
           </div>
         </div>
@@ -248,11 +270,39 @@ export default function MarketplaceMessages() {
                 {m.body}
               </div>
             ))}
-            {messages.length === 0 && (
+            {loadingMessages && (
+              <div className="text-xs text-zinc-500">Loading messages...</div>
+            )}
+            {!loadingMessages && messages.length === 0 && (
               <div className="text-xs text-zinc-500">No messages yet.</div>
             )}
           </div>
-          <div className="mt-4 flex items-center gap-3">
+          <div className="mt-4 flex items-center gap-3 relative">
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker((v) => !v)}
+              className="h-12 w-12 rounded-full border border-white/10 bg-white/5 text-lg"
+              aria-label="Add emoji"
+              title="Add emoji"
+            >
+              😊
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute bottom-14 left-0 z-10 w-64 rounded-2xl border border-white/10 bg-black/90 p-3 shadow-xl">
+                <div className="grid grid-cols-8 gap-2">
+                  {emojiList.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      className="h-8 w-8 rounded-lg bg-white/5 text-lg hover:bg-white/10"
+                      onClick={() => setInput((prev) => `${prev}${e}`)}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
