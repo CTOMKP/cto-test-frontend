@@ -17,6 +17,7 @@ import FundingModal from '../Funding/FundingModal';
 import { HarvestGrape } from '../PFP/HarvestGrape';
 import xpService from '../../services/xpService';
 import NotificationsBell from '../Notifications/NotificationsBell';
+import MessagesBell from '../Messages/MessagesBell';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -299,6 +300,7 @@ export const ProfilePage: React.FC = () => {
               <p className="text-sm text-gray-500">XP Balance: {xpBalance ?? user.xpBalance ?? 0}</p>
             </div>
             <div className="flex space-x-3 items-center">
+              <MessagesBell />
               <NotificationsBell />
               <a href="/" className="btn-secondary">Back to Listings</a>
               <button

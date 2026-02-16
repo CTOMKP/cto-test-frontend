@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import NotificationsBell from '../Notifications/NotificationsBell';
+import MessagesBell from '../Messages/MessagesBell';
 
 export default function MarketplaceTopNav() {
   const xp = useMemo(() => {
@@ -29,8 +30,8 @@ export default function MarketplaceTopNav() {
         <div className="flex items-center gap-3 text-xs text-zinc-400">
           <span>{xp} ????</span>
           <div className="flex items-center gap-2">
+            <MessagesBell />
             <NotificationsBell />
-            <button className="h-9 w-9 rounded-xl bg-white/5" />
             <button className="h-9 w-9 rounded-xl bg-white/5" />
           </div>
           {avatarUrl ? (
