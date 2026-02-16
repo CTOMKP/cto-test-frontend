@@ -32,6 +32,7 @@ export default function MarketplaceMessages() {
   const [escrowViewOpen, setEscrowViewOpen] = useState(false);
   const [currentEscrow, setCurrentEscrow] = useState<any>(null);
   const [showEscrowProposed, setShowEscrowProposed] = useState(false);
+  const [polling, setPolling] = useState(false);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
 
@@ -52,6 +53,28 @@ export default function MarketplaceMessages() {
       mounted = false;
     };
   }, [threadId]);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        setPolling(true);
+        const res = await messagesService.listThreads();
+        if (!alive) return;
+        const items = res?.items || res || [];
+        setThreads(items);
+      } catch {
+        // ignore
+      } finally {
+        if (alive) setPolling(false);
+      }
+    };
+    const interval = setInterval(poll, 15000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeThread) return;
@@ -102,6 +125,11 @@ export default function MarketplaceMessages() {
     if (!activeThread) return false;
     return activeThread.posterId === userId;
   }, [activeThread, userId]);
+
+  const otherUser = useMemo(() => {
+    if (!activeThread) return null;
+    return isPoster ? activeThread.applicant : activeThread.poster;
+  }, [activeThread, isPoster]);
 
   const handleSend = async () => {
     if (!activeThread || !input.trim()) return;
@@ -158,6 +186,7 @@ export default function MarketplaceMessages() {
                 <div className="text-zinc-400 truncate">{t.lastMessagePreview || 'No messages yet'}</div>
               </button>
             ))}
+            {polling && <div className="text-[10px] text-zinc-500">Refreshing…</div>}
           </div>
         </div>
 
@@ -198,7 +227,15 @@ export default function MarketplaceMessages() {
 
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
           <div className="flex flex-col items-center text-center">
-            <div className="h-20 w-20 rounded-full bg-white/10" />
+            {otherUser?.avatarUrl ? (
+              <img
+                src={otherUser.avatarUrl}
+                alt="Profile"
+                className="h-20 w-20 rounded-full object-cover border border-white/10"
+              />
+            ) : (
+              <div className="h-20 w-20 rounded-full bg-white/10" />
+            )}
             <div className="mt-3 font-semibold">{isPoster ? 'Applicant' : 'Poster'}</div>
             <div className="text-xs text-zinc-400">Typically replies in 15 minutes</div>
           </div>
