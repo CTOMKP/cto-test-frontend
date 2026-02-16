@@ -11,8 +11,10 @@ export default function MessagesBell() {
     try {
       const res: any = await messagesBadgeService.listThreads();
       const items = res?.items || res || [];
-      const total = items.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
-      setUnread(total);
+      if (items.length > 0) {
+        const total = items.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
+        setUnread(total);
+      }
     } catch {
       // best-effort
     }
@@ -34,6 +36,7 @@ export default function MessagesBell() {
       socket.emit('notifications.subscribe', { token });
     });
     socket.on('messages.new', () => {
+      setUnread((prev) => prev + 1);
       load();
     });
     return () => {

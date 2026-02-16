@@ -92,6 +92,7 @@ export default function MarketplaceMessages() {
     if (!activeThread) return;
     messagesService.getThread(activeThread.id).then((res: any) => {
       setMessages(res?.messages || []);
+      messagesService.markRead(activeThread.id).catch(() => null);
     });
   }, [activeThread?.id]);
 

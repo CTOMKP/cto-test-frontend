@@ -6,14 +6,17 @@ import { getBackendUrl } from '../../utils/apiConfig';
 export default function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const backendUrl = getBackendUrl();
-
-  const unreadCount = items.filter((n) => !n.readAt).length;
 
   const loadNotifications = async () => {
     try {
       const res = await notificationsService.list();
-      setItems(res?.items || []);
+      const nextItems = res?.items || [];
+      if (nextItems.length > 0) {
+        setItems(nextItems);
+        setUnreadCount(nextItems.filter((n: any) => !n.readAt).length);
+      }
     } catch {
       // best-effort
     }
@@ -39,6 +42,7 @@ export default function NotificationsBell() {
     });
     socket.on('notifications.new', (payload: any) => {
       setItems((prev) => [payload, ...prev]);
+      setUnreadCount((prev) => prev + 1);
     });
     return () => {
       socket.disconnect();
@@ -53,6 +57,7 @@ export default function NotificationsBell() {
       setItems((prev) =>
         prev.map((item) => (item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item))
       );
+      setUnreadCount((prev) => (prev > 0 ? prev - 1 : 0));
       alert(`${n.title}${n.body ? `\n\n${n.body}` : ''}`);
     } catch {
       // ignore
