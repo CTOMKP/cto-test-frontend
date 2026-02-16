@@ -157,6 +157,12 @@ export default function MarketplaceMessages() {
     );
   }, [otherUser?.avatarUrl, activeThread?.ad?.user?.avatarUrl]);
 
+  const avatarSrc = useMemo(() => {
+    if (!fallbackAvatarUrl) return '';
+    const cacheBuster = activeThread?.updatedAt || otherUser?.id || '';
+    return `${fallbackAvatarUrl}?v=${cacheBuster}`;
+  }, [fallbackAvatarUrl, activeThread?.updatedAt, otherUser?.id]);
+
   useEffect(() => {
     setAvatarError(false);
   }, [otherUser?.id]);
@@ -257,12 +263,13 @@ export default function MarketplaceMessages() {
 
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
           <div className="flex flex-col items-center text-center">
-            {fallbackAvatarUrl && !avatarError ? (
+            {avatarSrc && !avatarError ? (
               <img
-                src={fallbackAvatarUrl}
+                src={avatarSrc}
                 alt="Profile"
                 className="h-20 w-20 rounded-full object-cover border border-white/10"
                 onError={() => setAvatarError(true)}
+                referrerPolicy="no-referrer"
               />
             ) : (
               <div className="h-20 w-20 rounded-full bg-white/10" />
