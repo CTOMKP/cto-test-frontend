@@ -32,6 +32,7 @@ type Thread = {
   };
   lastMessageAt?: string;
   lastMessagePreview?: string;
+  updatedAt?: string;
 };
 
 export default function MarketplaceMessages() {
