@@ -422,8 +422,14 @@ export const PrivyProfilePage: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <MessagesBell />
-              <NotificationsBell />
+              <MessagesBell
+                buttonClassName="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 text-gray-900"
+                iconClassName="h-4 w-4"
+              />
+              <NotificationsBell
+                buttonClassName="h-9 w-9 rounded-xl bg-gray-100 text-gray-900"
+                iconClassName="mx-auto h-4 w-4"
+              />
               <button
                 onClick={handleLogout}
                 className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"

@@ -3,7 +3,13 @@ import { io, Socket } from 'socket.io-client';
 import notificationsService from '../../services/notificationsService';
 import { getBackendUrl } from '../../utils/apiConfig';
 
-export default function NotificationsBell() {
+export default function NotificationsBell({
+  buttonClassName = 'h-9 w-9 rounded-xl bg-white/5 text-white',
+  iconClassName = 'mx-auto h-4 w-4',
+}: {
+  buttonClassName?: string;
+  iconClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -105,11 +111,11 @@ export default function NotificationsBell() {
           if (!open) loadNotifications();
           setOpen((v) => !v);
         }}
-        className="h-9 w-9 rounded-xl bg-white/5 text-white"
+        className={buttonClassName}
         aria-label="Notifications"
         title="Notifications"
       >
-        <svg viewBox="0 0 24 24" className="mx-auto h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg viewBox="0 0 24 24" className={iconClassName} fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
           <path d="M9 17a3 3 0 0 0 6 0" />
         </svg>

@@ -3,7 +3,13 @@ import { io, Socket } from 'socket.io-client';
 import { getBackendUrl } from '../../utils/apiConfig';
 import messagesBadgeService from '../../services/messagesBadgeService';
 
-export default function MessagesBell() {
+export default function MessagesBell({
+  buttonClassName = 'flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-white',
+  iconClassName = 'h-4 w-4',
+}: {
+  buttonClassName?: string;
+  iconClassName?: string;
+}) {
   const [unread, setUnread] = useState(0);
   const backendUrl = getBackendUrl();
 
@@ -48,11 +54,11 @@ export default function MessagesBell() {
     <div className="relative">
       <a
         href="/messages"
-        className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-white"
+        className={buttonClassName}
         aria-label="Messages"
         title="Messages"
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg viewBox="0 0 24 24" className={iconClassName} fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M4 4h16v12H6l-2 2V4z" />
         </svg>
       </a>
