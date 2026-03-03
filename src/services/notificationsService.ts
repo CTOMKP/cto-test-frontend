@@ -13,7 +13,9 @@ const notificationsService = {
       },
     });
     if (!res.ok) throw new Error('Failed to load notifications');
-    return res.json();
+    const payload = await res.json();
+    const items = payload?.data?.items ?? payload?.items ?? payload?.data ?? payload ?? [];
+    return { items };
   },
 
   async markRead(id: string) {

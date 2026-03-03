@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import messagesService from '../../services/messagesService';
@@ -36,21 +36,24 @@ type Thread = {
 };
 
 export default function MarketplaceMessages() {
-  const { threadId } = useParams();
+  const { threadId, profileUserId } = useParams();
+  const navigate = useNavigate();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [escrowModalOpen, setEscrowModalOpen] = useState(false);
   const [escrowViewOpen, setEscrowViewOpen] = useState(false);
   const [currentEscrow, setCurrentEscrow] = useState<any>(null);
   const [showEscrowProposed, setShowEscrowProposed] = useState(false);
   const [polling, setPolling] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
+  const [profileAvatarError, setProfileAvatarError] = useState(false);
+  const [messageAvatarErrors, setMessageAvatarErrors] = useState<Record<string, boolean>>({});
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
 
@@ -118,12 +121,41 @@ export default function MarketplaceMessages() {
   }, [activeThread?.id]);
 
   useEffect(() => {
+    if (!activeThread) return;
+    let alive = true;
+    setCurrentEscrow(null);
+    escrowService
+      .getLatestByConversation(activeThread.id)
+      .then((res: any) => {
+        if (!alive) return;
+        setCurrentEscrow(res?.escrow || res);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setCurrentEscrow(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeThread?.id]);
+
+  useEffect(() => {
     const token = localStorage.getItem('cto_auth_token');
     if (!token) return;
     const socket: Socket = io(`${backendUrl}/ws`, {
       transports: ['websocket', 'polling'],
     });
     let mounted = true;
+    const refreshActiveEscrow = () => {
+      if (!activeThread) return;
+      escrowService.getLatestByConversation(activeThread.id).then((res: any) => {
+        if (!mounted) return;
+        setCurrentEscrow(res?.escrow || res);
+      }).catch(() => {
+        if (!mounted) return;
+        setCurrentEscrow(null);
+      });
+    };
     socket.on('connect', () => {
       socket.emit('notifications.subscribe', { token });
     });
@@ -143,18 +175,13 @@ export default function MarketplaceMessages() {
       if (!mounted) return;
       if (payload?.type !== 'ESCROW') return;
       const convoId = payload?.data?.conversationId;
-      if (activeThread && (!convoId || convoId === activeThread.id)) {
-        escrowService.getLatestByConversation(activeThread.id).then((res: any) => {
-          setCurrentEscrow(res?.escrow || res);
-        });
-      }
+      if (activeThread && (!convoId || convoId === activeThread.id)) refreshActiveEscrow();
     });
     socket.on('escrow.update', (payload: any) => {
-      if (payload?.escrowId && activeThread) {
-        escrowService.getLatestByConversation(activeThread.id).then((res: any) => {
-          setCurrentEscrow(res?.escrow || res);
-        });
-      }
+      if (!payload?.escrowId || !activeThread) return;
+      const convoId = payload?.conversationId;
+      if (convoId && convoId !== activeThread.id) return;
+      refreshActiveEscrow();
     });
     return () => {
       mounted = false;
@@ -167,34 +194,98 @@ export default function MarketplaceMessages() {
     return activeThread.posterId === userId;
   }, [activeThread, userId]);
 
+  const selectedProfileId = profileUserId ? Number(profileUserId) : null;
+
   const otherUser = useMemo(() => {
     if (!activeThread) return null;
     return isPoster ? activeThread.applicant : activeThread.poster;
   }, [activeThread, isPoster]);
 
-  const fallbackAvatarUrl = useMemo(() => {
-    return (
-      otherUser?.avatarUrl ||
-      activeThread?.ad?.user?.avatarUrl ||
-      ''
-    );
-  }, [otherUser?.avatarUrl, activeThread?.ad?.user?.avatarUrl]);
+  const withAvatarCache = (url?: string | null, cacheValue?: string | number) => {
+    if (!url) return '';
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${cacheValue || Date.now()}`;
+  };
 
-  const avatarSrc = useMemo(() => {
-    if (!fallbackAvatarUrl) return '';
-    const cacheBuster = activeThread?.updatedAt || otherUser?.id || '';
-    return `${fallbackAvatarUrl}?v=${cacheBuster}`;
-  }, [fallbackAvatarUrl, activeThread?.updatedAt, otherUser?.id]);
+  const posterAvatarSrc = useMemo(() => {
+    const fallback = activeThread?.ad?.user?.avatarUrl || '';
+    const base = activeThread?.poster?.avatarUrl || fallback;
+    return withAvatarCache(base, activeThread?.poster?.id || activeThread?.updatedAt || '');
+  }, [activeThread?.poster?.avatarUrl, activeThread?.poster?.id, activeThread?.ad?.user?.avatarUrl, activeThread?.updatedAt]);
+
+  const applicantAvatarSrc = useMemo(() => {
+    const base = activeThread?.applicant?.avatarUrl || '';
+    return withAvatarCache(base, activeThread?.applicant?.id || activeThread?.updatedAt || '');
+  }, [activeThread?.applicant?.avatarUrl, activeThread?.applicant?.id, activeThread?.updatedAt]);
+
+  const getThreadUser = (id?: number | null) => {
+    if (!activeThread || !id) return null;
+    if (id === activeThread.posterId) return activeThread.poster;
+    if (id === activeThread.applicantId) return activeThread.applicant;
+    return null;
+  };
+
+  const profileAvatarSrc = useMemo(() => {
+    const selectedUser = selectedProfileId ? getThreadUser(selectedProfileId) : otherUser;
+    const fallback = selectedProfileId === activeThread?.posterId ? posterAvatarSrc : applicantAvatarSrc;
+    const raw = selectedUser?.avatarUrl || fallback;
+    return raw ? withAvatarCache(raw, activeThread?.updatedAt || selectedUser?.id || '') : '';
+  }, [
+    selectedProfileId,
+    activeThread?.posterId,
+    activeThread?.updatedAt,
+    otherUser?.avatarUrl,
+    otherUser?.id,
+    posterAvatarSrc,
+    applicantAvatarSrc,
+  ]);
+
+  const getMessageAvatarSrc = (senderId: number) => {
+    if (!activeThread) return '';
+    if (senderId === activeThread.posterId) return posterAvatarSrc;
+    if (senderId === activeThread.applicantId) return applicantAvatarSrc;
+    return '';
+  };
+
+  const selectedProfileUser = useMemo(() => {
+    if (!activeThread || !selectedProfileId) return otherUser;
+    return getThreadUser(selectedProfileId) || otherUser;
+  }, [activeThread, selectedProfileId, otherUser]);
+
+  const selectedProfileRole = useMemo(() => {
+    if (!activeThread || !selectedProfileId) return isPoster ? 'Applicant' : 'Poster';
+    return selectedProfileId === activeThread.posterId ? 'Poster' : 'Applicant';
+  }, [activeThread, selectedProfileId, isPoster]);
+
+  const renderMessageBody = (body: string) => {
+    const text = String(body || '');
+    const segments = text.split(/(https?:\/\/[^\s]+)/g);
+    return segments.map((segment, idx) => {
+      if (/^https?:\/\/[^\s]+$/i.test(segment)) {
+        return (
+          <a
+            key={`${segment}-${idx}`}
+            href={segment}
+            target="_blank"
+            rel="noreferrer"
+            className="underline text-blue-600"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {segment}
+          </a>
+        );
+      }
+      return <span key={`${idx}-${segment}`}>{segment}</span>;
+    });
+  };
 
   useEffect(() => {
-    setAvatarError(false);
-  }, [otherUser?.id]);
+    setProfileAvatarError(false);
+  }, [selectedProfileUser?.id, profileAvatarSrc]);
 
   useEffect(() => {
-    if (avatarSrc) {
-      setAvatarError(false);
-    }
-  }, [avatarSrc]);
+    setMessageAvatarErrors({});
+  }, [activeThread?.id, posterAvatarSrc, applicantAvatarSrc]);
 
   const handleSend = async () => {
     if (!activeThread || !input.trim()) return;
@@ -202,14 +293,86 @@ export default function MarketplaceMessages() {
     const msg = res?.message || res;
     setMessages((prev) => [...prev, msg]);
     setInput('');
-    setShowEmojiPicker(false);
+  };
+
+  const uploadAttachmentViaPresign = async (file: File) => {
+    const token = localStorage.getItem('cto_auth_token');
+    const response = await fetch(`${backendUrl}/api/v1/images/presign`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        type: 'generic',
+        userId: String(userId || ''),
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to request upload URL');
+    }
+    const payload: any = await response.json();
+    const data = payload?.data?.data || payload?.data || payload;
+    const uploadUrl = data?.uploadUrl;
+    const key = data?.key;
+    if (!uploadUrl || !key) {
+      throw new Error('Invalid upload response');
+    }
+
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!putRes.ok) {
+      throw new Error(`Upload failed with status ${putRes.status}`);
+    }
+    return `${backendUrl}/api/v1/images/view/${key}`;
+  };
+
+  const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!activeThread || files.length === 0) return;
+    try {
+      setUploadingAttachment(true);
+      for (const file of files) {
+        const viewUrl = await uploadAttachmentViaPresign(file);
+        const body = `Attachment: ${file.name}\n${viewUrl}`;
+        const res = await messagesService.sendMessage(activeThread.id, body);
+        const msg = res?.message || res;
+        setMessages((prev) => [...prev, msg]);
+      }
+      toast.success(files.length > 1 ? 'Attachments sent' : 'Attachment sent');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to upload attachment');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const handleOpenUserProfile = (senderId: number) => {
+    if (!activeThread) return;
+
+    const normalizedSenderId = Number(senderId);
+    if (!Number.isFinite(normalizedSenderId) || normalizedSenderId <= 0) return;
+
+    if (normalizedSenderId === userId) {
+      navigate('/profile');
+      return;
+    }
+
+    navigate(`/messages/${activeThread.id}/profile/${normalizedSenderId}`);
   };
 
   const emojiList = [
-    '😀','😁','😂','🤣','😊','😍','😘','😎','🤔','😅',
-    '🙂','😇','😉','😌','😜','🤩','🥳','😤','😭','😱',
-    '👍','👎','👏','🙌','🤝','🙏','🔥','💯','✨','🎉',
-    '❤️','💔','💙','💚','💛','💜','🖤','🤍','🤎','💖'
+    '\uD83D\uDE00', '\uD83D\uDE01', '\uD83D\uDE02', '\uD83E\uDD23', '\uD83D\uDE0A',
+    '\uD83D\uDE0D', '\uD83D\uDE18', '\uD83D\uDE0E', '\uD83E\uDD14', '\uD83D\uDE05',
+    '\uD83D\uDE42', '\uD83D\uDE07', '\uD83D\uDE09', '\uD83D\uDE0C', '\uD83D\uDE1C',
+    '\uD83D\uDC4D', '\uD83D\uDC4E', '\uD83D\uDE4C', '\uD83D\uDD25', '\u2764\uFE0F',
   ];
 
   const groupReactions = (reactions: any[] = []) => {
@@ -237,14 +400,26 @@ export default function MarketplaceMessages() {
     }
   };
 
+  const refreshEscrowForActiveThread = async () => {
+    if (!activeThread) return null;
+    const escrow = await escrowService.getLatestByConversation(activeThread.id).catch(() => null);
+    const normalized = escrow?.escrow || escrow || null;
+    setCurrentEscrow(normalized);
+    return normalized;
+  };
+
   const openEscrow = () => {
+    if (currentEscrow?.id) {
+      setEscrowViewOpen(true);
+      return;
+    }
     setEscrowModalOpen(true);
   };
 
   const openEscrowView = async () => {
     if (!activeThread) return;
-    const escrow = await escrowService.getLatestByConversation(activeThread.id).catch(() => null);
-    setCurrentEscrow(escrow?.escrow || escrow);
+    const escrow = await refreshEscrowForActiveThread();
+    if (!escrow) return;
     setEscrowViewOpen(true);
   };
 
@@ -257,8 +432,12 @@ export default function MarketplaceMessages() {
     setEscrowModalOpen(false);
     setCurrentEscrow(res?.escrow || res);
     setShowEscrowProposed(true);
-    setTimeout(() => setShowEscrowProposed(false), 2500);
+    setTimeout(() => setShowEscrowProposed(false), 3000);
   };
+
+  const hasEscrow = Boolean(currentEscrow?.id);
+  const applicantDisplayName =
+    activeThread?.applicant?.name || activeThread?.applicant?.email || 'applicant';
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -285,7 +464,7 @@ export default function MarketplaceMessages() {
               </button>
             ))}
             {loadingThreads && <div className="text-[10px] text-zinc-500">Loading...</div>}
-            {polling && <div className="text-[10px] text-zinc-500">Refreshing…</div>}
+            {polling && <div className="text-[10px] text-zinc-500">Refreshing...</div>}
           </div>
         </div>
 
@@ -296,7 +475,33 @@ export default function MarketplaceMessages() {
           <div className="flex-1 mt-4 space-y-4 overflow-y-auto">
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.senderId === userId ? 'justify-end' : 'justify-start'}`}>
-                <div className="max-w-[70%]">
+                <div className={`flex max-w-[78%] items-end gap-2 ${m.senderId === userId ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {getMessageAvatarSrc(m.senderId) && !messageAvatarErrors[String(m.senderId)] ? (
+                    <button
+                      type="button"
+                      className="rounded-full"
+                      onClick={() => handleOpenUserProfile(m.senderId)}
+                      title="View profile"
+                    >
+                      <img
+                        src={getMessageAvatarSrc(m.senderId)}
+                        alt="User"
+                        className="h-7 w-7 rounded-full object-cover border border-white/10"
+                        onError={() =>
+                          setMessageAvatarErrors((prev) => ({ ...prev, [String(m.senderId)]: true }))
+                        }
+                        referrerPolicy="no-referrer"
+                      />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="h-7 w-7 rounded-full bg-white/10"
+                      onClick={() => handleOpenUserProfile(m.senderId)}
+                      title="View profile"
+                    />
+                  )}
+                  <div className="w-full">
                   <div
                     onClick={() => setReactionPickerFor((prev) => (prev === m.id ? null : m.id))}
                     className={`rounded-2xl px-4 py-3 text-sm cursor-pointer ${
@@ -304,7 +509,7 @@ export default function MarketplaceMessages() {
                     }`}
                     title="React"
                   >
-                    {m.body}
+                    <div className="whitespace-pre-wrap break-words">{renderMessageBody(m.body)}</div>
                   </div>
                   {reactionPickerFor === m.id && (
                     <div className="mt-2 rounded-2xl border border-white/10 bg-black/90 p-2">
@@ -337,6 +542,7 @@ export default function MarketplaceMessages() {
                     </div>
                   )}
                 </div>
+                </div>
               </div>
             ))}
             {loadingMessages && (
@@ -349,80 +555,82 @@ export default function MarketplaceMessages() {
           <div className="mt-4 flex items-center gap-3 relative">
             <button
               type="button"
-              onClick={() => setShowEmojiPicker((v) => !v)}
+              onClick={() => attachmentInputRef.current?.click()}
               className="h-12 w-12 rounded-full border border-white/10 bg-white/5 text-lg"
-              aria-label="Add emoji"
-              title="Add emoji"
+              aria-label="Add attachment"
+              title="Attach file"
+              disabled={uploadingAttachment}
             >
-              😊
+              <svg viewBox="0 0 24 24" className="mx-auto h-5 w-5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.44 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 114.95 4.95l-8.49 8.49a2 2 0 11-2.83-2.83l7.78-7.78" />
+              </svg>
             </button>
-            {showEmojiPicker && (
-              <div className="absolute bottom-14 left-0 z-10 w-64 rounded-2xl border border-white/10 bg-black/90 p-3 shadow-xl">
-                <div className="grid grid-cols-8 gap-2">
-                  {emojiList.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      className="h-8 w-8 rounded-lg bg-white/5 text-lg hover:bg-white/10"
-                      onClick={() => setInput((prev) => `${prev}${e}`)}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              className="hidden"
+              multiple
+              onChange={handleAttachmentUpload}
+              accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+            />
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               className="flex-1 rounded-full bg-white/5 px-4 py-3 text-sm"
-              placeholder="Type your message"
+              placeholder={uploadingAttachment ? 'Uploading attachment...' : 'Type your message'}
             />
             <button
               onClick={handleSend}
+              disabled={uploadingAttachment}
               className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-3 text-sm font-semibold text-black"
             >
-              Send
+              {uploadingAttachment ? 'Uploading...' : 'Send'}
             </button>
           </div>
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
           <div className="flex flex-col items-center text-center">
-            {avatarSrc && !avatarError ? (
+            {profileAvatarSrc && !profileAvatarError ? (
               <img
-                key={avatarSrc}
-                src={avatarSrc}
+                key={profileAvatarSrc}
+                src={profileAvatarSrc}
                 alt="Profile"
                 className="h-20 w-20 rounded-full object-cover border border-white/10"
-                onError={() => setAvatarError(true)}
+                onError={() => setProfileAvatarError(true)}
                 referrerPolicy="no-referrer"
               />
             ) : (
               <div className="h-20 w-20 rounded-full bg-white/10" />
             )}
-            <div className="mt-3 font-semibold">{isPoster ? 'Applicant' : 'Poster'}</div>
+            <div className="mt-3 font-semibold">{selectedProfileUser?.name || selectedProfileUser?.email || selectedProfileRole}</div>
+            <div className="text-xs text-zinc-400">{selectedProfileRole}</div>
             <div className="text-xs text-zinc-400">Typically replies in 15 minutes</div>
+            {!!activeThread?.id && (
+              <button
+                type="button"
+                className="mt-3 rounded-full border border-white/10 px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/10"
+                onClick={() => navigate(`/messages/${activeThread.id}`)}
+              >
+                Back to Thread
+              </button>
+            )}
           </div>
           <div className="mt-6 space-y-3 text-xs text-zinc-400">
             <div>Project Brief</div>
             <div className="text-white">{activeThread?.ad?.description?.slice(0, 120) || 'N/A'}...</div>
           </div>
-          {isPoster ? (
-            <button
-              onClick={openEscrow}
-              className="mt-6 w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-3 text-sm font-semibold text-black"
-            >
-              Set Up Escrow
-            </button>
-          ) : (
-            <button
-              onClick={openEscrowView}
-              className="mt-6 w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-3 text-sm font-semibold text-black"
-            >
-              View Escrow Offer
-            </button>
-          )}
+          <button
+            onClick={hasEscrow ? openEscrowView : openEscrow}
+            disabled={!isPoster && !hasEscrow}
+            className={`mt-6 w-full rounded-full px-4 py-3 text-sm font-semibold ${
+              !isPoster && !hasEscrow
+                ? 'cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500'
+                : 'bg-gradient-to-r from-pink-500 to-amber-400 text-black'
+            }`}
+          >
+            {hasEscrow ? 'View Escrow' : isPoster ? 'Set Up Escrow' : 'No Escrow Set Yet'}
+          </button>
         </div>
       </div>
 
@@ -430,8 +638,14 @@ export default function MarketplaceMessages() {
         <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-40">
           <div className="rounded-2xl border border-white/10 bg-black/80 px-10 py-6 text-center">
             <p className="text-sm text-zinc-400">Escrow Deal Proposed</p>
-            <p className="mt-2 text-xs text-zinc-500">Waiting for acceptance by applicant</p>
-            <button className="mt-4 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-2 text-xs font-semibold text-black">
+            <p className="mt-2 text-xs text-zinc-500">Waiting for acceptance by {applicantDisplayName}</p>
+            <button
+              className="mt-4 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-2 text-xs font-semibold text-black"
+              onClick={() => {
+                setShowEscrowProposed(false);
+                setEscrowViewOpen(true);
+              }}
+            >
               View Message
             </button>
           </div>
@@ -447,6 +661,7 @@ export default function MarketplaceMessages() {
           escrow={currentEscrow}
           onClose={() => setEscrowViewOpen(false)}
           isPoster={isPoster}
+          onUpdated={refreshEscrowForActiveThread}
         />
       )}
       </div>
@@ -465,7 +680,7 @@ function EscrowCreateModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
       <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-black/90 p-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Create Escrow Offer</h3>
-          <button onClick={onClose} className="text-zinc-500">×</button>
+          <button onClick={onClose} className="text-zinc-500">x</button>
         </div>
         <div className="mt-6 space-y-4 text-sm">
           <div>
@@ -508,11 +723,26 @@ function EscrowCreateModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   );
 }
 
-function EscrowViewModal({ escrow, onClose, isPoster }: { escrow: any; onClose: () => void; isPoster: boolean }) {
+function EscrowViewModal({
+  escrow,
+  onClose,
+  isPoster,
+  onUpdated,
+}: {
+  escrow: any;
+  onClose: () => void;
+  isPoster: boolean;
+  onUpdated?: () => Promise<any>;
+}) {
   const { user: privyUser } = usePrivyAuth();
   const { signRawHash } = useSignRawHash();
   const [funding, setFunding] = useState(false);
+  const [decisionLoading, setDecisionLoading] = useState<'accept' | 'decline' | null>(null);
   if (!escrow) return null;
+
+  const refreshEscrow = async () => {
+    if (onUpdated) await onUpdated();
+  };
 
   const handleFund = async () => {
     try {
@@ -540,40 +770,70 @@ function EscrowViewModal({ escrow, onClose, isPoster }: { escrow: any; onClose: 
         await paymentService.verify(paymentId, txHash);
       }
       toast.success(`Escrow funded: ${txHash.substring(0, 8)}...`);
+      await refreshEscrow();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to fund escrow');
     } finally {
       setFunding(false);
     }
   };
+
+  const handleDecision = async (action: 'accept' | 'decline') => {
+    try {
+      setDecisionLoading(action);
+      if (action === 'accept') {
+        await escrowService.accept(escrow.id);
+        toast.success('Escrow offer accepted');
+      } else {
+        await escrowService.decline(escrow.id);
+        toast.success('Escrow offer declined');
+      }
+      await refreshEscrow();
+    } catch (error: any) {
+      toast.error(error?.message || `Failed to ${action} escrow`);
+    } finally {
+      setDecisionLoading(null);
+    }
+  };
+
+  const statusLabel = String(escrow.status || 'UNKNOWN').replace(/_/g, ' ');
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
       <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-black/90 p-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Escrow Offer</h3>
-          <button onClick={onClose} className="text-zinc-500">×</button>
+          <button onClick={onClose} className="text-zinc-500">x</button>
         </div>
         <div className="mt-6 space-y-3 text-sm">
+          <div className="text-xs uppercase tracking-wide text-zinc-500">Status: {statusLabel}</div>
           <div>Task Title: {escrow.title}</div>
           <div>Total Amount: {escrow.totalAmount} USDC</div>
           <div>Deadline: {escrow.deadline ? new Date(escrow.deadline).toLocaleDateString() : 'No fixed deadline'}</div>
           <div className="rounded-xl border border-white/10 bg-black/70 p-3 text-xs text-zinc-400">
             Escrow Method: Movement USDC
           </div>
-          {!isPoster && (
+          {!isPoster && escrow.status === 'PROPOSED' && (
             <div className="flex gap-3">
               <button
-                onClick={() => escrowService.accept(escrow.id)}
-                className="flex-1 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-3 text-sm font-semibold text-black"
+                onClick={() => handleDecision('accept')}
+                disabled={decisionLoading !== null}
+                className="flex-1 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"
               >
-                Accept Offer
+                {decisionLoading === 'accept' ? 'Accepting...' : 'Accept Offer'}
               </button>
               <button
-                onClick={() => escrowService.decline(escrow.id)}
-                className="flex-1 rounded-full border border-white/10 px-4 py-3 text-sm text-zinc-300"
+                onClick={() => handleDecision('decline')}
+                disabled={decisionLoading !== null}
+                className="flex-1 rounded-full border border-white/10 px-4 py-3 text-sm text-zinc-300 disabled:opacity-40"
               >
-                Decline
+                {decisionLoading === 'decline' ? 'Declining...' : 'Decline'}
               </button>
+            </div>
+          )}
+          {!isPoster && escrow.status !== 'PROPOSED' && (
+            <div className="rounded-xl border border-white/10 bg-black/70 p-3 text-xs text-zinc-400">
+              Awaiting next escrow step from the poster.
             </div>
           )}
           {isPoster && escrow.status === 'AWAITING_PAYMENT' && (
@@ -584,6 +844,11 @@ function EscrowViewModal({ escrow, onClose, isPoster }: { escrow: any; onClose: 
             >
               {funding ? 'Funding...' : 'Fund Escrow'}
             </button>
+          )}
+          {isPoster && escrow.status !== 'AWAITING_PAYMENT' && (
+            <div className="rounded-xl border border-white/10 bg-black/70 p-3 text-xs text-zinc-400">
+              This escrow is currently in `{statusLabel}` state.
+            </div>
           )}
         </div>
       </div>
