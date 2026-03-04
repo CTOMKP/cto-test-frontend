@@ -30,6 +30,32 @@ const notificationsService = {
     if (!res.ok) throw new Error('Failed to mark notification read');
     return res.json();
   },
+
+  async markAllRead() {
+    const token = localStorage.getItem('cto_auth_token');
+    const res = await fetch(`${backendUrl}/api/v1/notifications/read-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!res.ok) throw new Error('Failed to mark notifications read');
+    return res.json();
+  },
+
+  async deleteNotification(id: string) {
+    const token = localStorage.getItem('cto_auth_token');
+    const res = await fetch(`${backendUrl}/api/v1/notifications/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!res.ok) throw new Error('Failed to delete notification');
+    return res.json();
+  },
 };
 
 export default notificationsService;

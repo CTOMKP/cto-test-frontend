@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import notificationsService from '../../services/notificationsService';
 import { getBackendUrl } from '../../utils/apiConfig';
@@ -14,6 +14,9 @@ export default function NotificationsBell({
   const [items, setItems] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('cto_auth_token'));
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
+  const [busyNotificationId, setBusyNotificationId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const backendUrl = getBackendUrl();
 
   const loadNotifications = async () => {
@@ -89,6 +92,18 @@ export default function NotificationsBell({
     return () => window.removeEventListener('cto-notifications-ping', handler as EventListener);
   }, [token]);
 
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (open && containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [open]);
+
+  const unreadItems = useMemo(() => items.filter((n: any) => !n.readAt), [items]);
+
   const handleClickNotification = async (n: any) => {
     try {
       if (!n.readAt) {
@@ -104,8 +119,39 @@ export default function NotificationsBell({
     }
   };
 
+  const handleMarkAllRead = async () => {
+    if (!unreadItems.length || isMarkingAll) return;
+    setIsMarkingAll(true);
+    try {
+      await notificationsService.markAllRead();
+      setItems((prev) => prev.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    } finally {
+      setIsMarkingAll(false);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (busyNotificationId) return;
+    setBusyNotificationId(id);
+    try {
+      await notificationsService.deleteNotification(id);
+      setItems((prev) => {
+        const next = prev.filter((item) => item.id !== id);
+        setUnreadCount(next.filter((item: any) => !item.readAt).length);
+        return next;
+      });
+    } catch {
+      // ignore
+    } finally {
+      setBusyNotificationId(null);
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         onClick={() => {
           if (!open) loadNotifications();
@@ -126,23 +172,51 @@ export default function NotificationsBell({
         </span>
       )}
       {open && (
-        <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-white/10 bg-black/90 p-2 text-xs shadow-xl">
-          <div className="px-2 py-1 text-zinc-400">Notifications</div>
-          {items.length === 0 && (
-            <div className="px-2 py-3 text-zinc-500">No notifications</div>
-          )}
-          {items.map((n) => (
+        <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-white/10 bg-black/90 p-2 text-xs shadow-xl">
+          <div className="mb-1 flex items-center justify-between px-2 py-1">
+            <div className="text-zinc-400">Notifications</div>
             <button
-              key={n.id}
-              onClick={() => handleClickNotification(n)}
-              className={`w-full rounded-xl px-2 py-2 text-left ${
-                n.readAt ? 'text-zinc-400' : 'text-white'
-              } hover:bg-white/5`}
+              type="button"
+              onClick={handleMarkAllRead}
+              disabled={!unreadItems.length || isMarkingAll}
+              className="text-[11px] text-zinc-300 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-600"
             >
-              <div className="text-sm">{n.title}</div>
-              {n.body && <div className="text-[11px] text-zinc-500">{n.body}</div>}
+              Mark all read
             </button>
-          ))}
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {items.length === 0 && (
+              <div className="px-2 py-3 text-zinc-500">No notifications</div>
+            )}
+            {items.map((n) => (
+              <div
+                key={n.id}
+                className={`mb-1 flex items-start gap-2 rounded-xl px-2 py-2 ${
+                  n.readAt ? 'text-zinc-400' : 'text-white'
+                } hover:bg-white/5`}
+              >
+                <button
+                  onClick={() => handleClickNotification(n)}
+                  className="flex-1 text-left"
+                >
+                  <div className="text-sm">{n.title}</div>
+                  {n.body && <div className="text-[11px] text-zinc-500">{n.body}</div>}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteNotification(n.id);
+                  }}
+                  disabled={busyNotificationId === n.id}
+                  className="rounded-md px-1.5 py-0.5 text-[11px] text-zinc-500 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                  title="Delete notification"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
