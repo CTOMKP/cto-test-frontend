@@ -737,7 +737,10 @@ function EscrowViewModal({
   const { user: privyUser } = usePrivyAuth();
   const { signRawHash } = useSignRawHash();
   const [funding, setFunding] = useState(false);
-  const [decisionLoading, setDecisionLoading] = useState<'accept' | 'decline' | null>(null);
+  const [decisionLoading, setDecisionLoading] = useState<
+    'accept' | 'decline' | 'review_release' | 'review_dispute' | 'dispute_response' | null
+  >(null);
+  const [disputeExplanation, setDisputeExplanation] = useState('');
   if (!escrow) return null;
 
   const refreshEscrow = async () => {
@@ -796,6 +799,38 @@ function EscrowViewModal({
     }
   };
 
+  const handlePosterReview = async (satisfied: boolean) => {
+    try {
+      const loadingKey = satisfied ? 'review_release' : 'review_dispute';
+      setDecisionLoading(loadingKey);
+      let reason = '';
+      if (!satisfied) {
+        reason = window.prompt('Briefly describe the issue with the delivery:', '') || '';
+      }
+      await escrowService.posterReview(escrow.id, { satisfied, reason: reason.trim() || undefined });
+      toast.success(satisfied ? 'Funds released' : 'Dispute opened. Applicant has been asked to explain.');
+      await refreshEscrow();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to submit review decision');
+    } finally {
+      setDecisionLoading(null);
+    }
+  };
+
+  const handleDisputeResponse = async () => {
+    try {
+      setDecisionLoading('dispute_response');
+      await escrowService.submitDisputeResponse(escrow.id, disputeExplanation);
+      toast.success('Your explanation has been sent for review');
+      setDisputeExplanation('');
+      await refreshEscrow();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to send explanation');
+    } finally {
+      setDecisionLoading(null);
+    }
+  };
+
   const statusLabel = String(escrow.status || 'UNKNOWN').replace(/_/g, ' ');
 
   return (
@@ -833,7 +868,29 @@ function EscrowViewModal({
           )}
           {!isPoster && escrow.status !== 'PROPOSED' && (
             <div className="rounded-xl border border-white/10 bg-black/70 p-3 text-xs text-zinc-400">
-              Awaiting next escrow step from the poster.
+              {escrow.status === 'UNDER_REVIEW'
+                ? 'Deadline elapsed. Awaiting client review decision.'
+                : escrow.status === 'DISPUTED'
+                  ? 'A dispute is open. Please provide your explanation below.'
+                  : 'Awaiting next escrow step from the poster.'}
+            </div>
+          )}
+          {!isPoster && escrow.status === 'DISPUTED' && (
+            <div className="space-y-2">
+              <textarea
+                value={disputeExplanation}
+                onChange={(e) => setDisputeExplanation(e.target.value)}
+                rows={3}
+                placeholder="Explain what happened and any proof/context."
+                className="w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-xs text-zinc-200"
+              />
+              <button
+                onClick={handleDisputeResponse}
+                disabled={decisionLoading !== null || disputeExplanation.trim().length < 10}
+                className="w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-2 text-xs font-semibold text-black disabled:opacity-40"
+              >
+                {decisionLoading === 'dispute_response' ? 'Submitting...' : 'Submit Explanation'}
+              </button>
             </div>
           )}
           {isPoster && escrow.status === 'AWAITING_PAYMENT' && (
@@ -845,7 +902,30 @@ function EscrowViewModal({
               {funding ? 'Funding...' : 'Fund Escrow'}
             </button>
           )}
-          {isPoster && escrow.status !== 'AWAITING_PAYMENT' && (
+          {isPoster && escrow.status === 'UNDER_REVIEW' && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-white/10 bg-black/70 p-3 text-xs text-zinc-400">
+                Deadline has elapsed. Are you satisfied with delivery?
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handlePosterReview(true)}
+                  disabled={decisionLoading !== null}
+                  className="flex-1 rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"
+                >
+                  {decisionLoading === 'review_release' ? 'Releasing...' : 'Release Funds'}
+                </button>
+                <button
+                  onClick={() => handlePosterReview(false)}
+                  disabled={decisionLoading !== null}
+                  className="flex-1 rounded-full border border-white/10 px-4 py-3 text-sm text-zinc-300 disabled:opacity-40"
+                >
+                  {decisionLoading === 'review_dispute' ? 'Submitting...' : 'Report Issue'}
+                </button>
+              </div>
+            </div>
+          )}
+          {isPoster && !['AWAITING_PAYMENT', 'UNDER_REVIEW'].includes(escrow.status) && (
             <div className="rounded-xl border border-white/10 bg-black/70 p-3 text-xs text-zinc-400">
               This escrow is currently in `{statusLabel}` state.
             </div>

@@ -71,6 +71,22 @@ export const escrowService = {
     });
     return res.data?.data || res.data;
   },
+
+  async posterReview(id: string, payload: { satisfied: boolean; reason?: string }) {
+    const res = await axios.post(`${backendUrl}/api/v1/escrow/${id}/review`, payload, {
+      headers: authHeaders(),
+    });
+    return res.data?.data || res.data;
+  },
+
+  async submitDisputeResponse(id: string, explanation: string) {
+    const res = await axios.post(
+      `${backendUrl}/api/v1/escrow/${id}/dispute-response`,
+      { explanation },
+      { headers: authHeaders() },
+    );
+    return res.data?.data || res.data;
+  },
 };
 
 export default escrowService;
