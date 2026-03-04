@@ -19,12 +19,28 @@ export const PrivyLoginPage: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
   const [syncProgress, setSyncProgress] = useState('');
+  const [initTimedOut, setInitTimedOut] = useState(false);
 
   // Use a ref to always have the latest user object in async loops
   const userRef = useRef(user);
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+
+  useEffect(() => {
+    if (ready) {
+      setInitTimedOut(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setInitTimedOut(true);
+    }, 15000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [ready]);
 
   // Sync with backend after Privy authentication
   useEffect(() => {
@@ -257,9 +273,33 @@ export const PrivyLoginPage: React.FC = () => {
   if (!ready) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-lg px-6">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-xl text-gray-700">Loading Privy...</p>
+          {initTimedOut && (
+            <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left text-sm text-amber-800">
+              <p className="font-semibold">Privy initialization is taking too long.</p>
+              <p className="mt-1">
+                This usually means the browser blocked Privy config/bootstrap request for this origin.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(ROUTES.home)}
+                  className="rounded-lg border border-amber-400 px-3 py-1.5 text-amber-800 hover:bg-amber-100"
+                >
+                  Go to Home
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

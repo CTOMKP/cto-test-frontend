@@ -209,17 +209,13 @@ const App: React.FC = () => {
       <PrivyProvider
         appId={privyAppId}
         config={{
-          loginMethods: ['email', 'wallet', 'google', 'twitter', 'discord'],
+          // Keep this minimal to avoid config bootstrap failures from providers that are not enabled for the app.
+          loginMethods: ['email', 'wallet', 'google'],
           appearance: {
             theme: 'dark',
             accentColor: '#8B5CF6',
             logo: '/logo.png',
             showWalletLoginFirst: true,
-          },
-          embeddedWallets: {
-            ethereum: {
-              createOnLogin: 'users-without-wallets',
-            },
           },
         }}
       >
