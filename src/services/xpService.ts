@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getBackendUrl } from '../utils/apiConfig';
+import { persistRewardData } from '../utils/rewardStorage';
 
 const backendUrl = getBackendUrl();
 
@@ -13,13 +14,17 @@ export const xpService = {
     const res = await axios.get(`${backendUrl}/api/v1/xp/me`, {
       headers: authHeaders(),
     });
-    return res.data?.data || res.data;
+    const payload = res.data?.data || res.data;
+    persistRewardData(payload);
+    return payload;
   },
   async getBalance() {
     const res = await axios.get(`${backendUrl}/api/v1/xp/me`, {
       headers: authHeaders(),
     });
-    return res.data?.data || res.data;
+    const payload = res.data?.data || res.data;
+    persistRewardData(payload);
+    return payload;
   },
 };
 

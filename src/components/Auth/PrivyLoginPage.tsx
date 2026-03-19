@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { createMovementWallet, getMovementWallet } from '../../lib/movement-wallet';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
+import { persistRewardData } from '../../utils/rewardStorage';
 
 // Module-level Set to track processing user IDs across ALL component instances
 // This prevents multiple parallel runs
@@ -202,6 +203,10 @@ export const PrivyLoginPage: React.FC = () => {
       localStorage.setItem('cto_auth_token', responseData.token);
       localStorage.setItem('cto_user_id', responseData.user.id.toString());
       localStorage.setItem('cto_user_email', responseData.user.email);
+      if (responseData.user.createdAt) {
+        localStorage.setItem('cto_user_created', responseData.user.createdAt);
+      }
+      persistRewardData(responseData.user);
       try {
         window.dispatchEvent(new Event('cto-notifications-ping'));
       } catch {

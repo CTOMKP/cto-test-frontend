@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import NotificationsBell from '../Notifications/NotificationsBell';
 import MessagesBell from '../Messages/MessagesBell';
+import { getStoredRewardData } from '../../utils/rewardStorage';
 
 export default function MarketplaceTopNav() {
-  const xp = useMemo(() => {
-    const raw = localStorage.getItem('cto_user_xp');
-    return raw ? Number(raw) : 0;
-  }, []);
+  const rewards = useMemo(() => getStoredRewardData(), []);
+  const xp = rewards.xpBalance ?? 0;
+  const rankLabel = rewards.rankLabel ?? 'Seedling';
   const avatarUrl = useMemo(() => {
     return localStorage.getItem('cto_user_avatar_url') || localStorage.getItem('profile_avatar_url') || '';
   }, []);
@@ -15,7 +15,7 @@ export default function MarketplaceTopNav() {
     <div className="w-full border-b border-white/5 bg-black/90">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-4">
-          <button className="h-9 w-9 rounded-full bg-white/5 text-white">???</button>
+          <button className="h-9 w-9 rounded-full bg-white/5 text-white">≡</button>
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-full bg-pink-500/20" />
             <span className="text-sm font-semibold">Marketplace</span>
@@ -28,7 +28,10 @@ export default function MarketplaceTopNav() {
           </nav>
         </div>
         <div className="flex items-center gap-3 text-xs text-zinc-400">
-          <span>{xp} ????</span>
+          <span>{xp} XP</span>
+          <span className="hidden rounded-full border border-white/10 px-3 py-1 text-[11px] text-zinc-300 md:inline-flex">
+            {rankLabel}
+          </span>
           <div className="flex items-center gap-2">
             <MessagesBell />
             <NotificationsBell />

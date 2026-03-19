@@ -11,6 +11,8 @@ import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import NotificationsBell from '../Notifications/NotificationsBell';
 import MessagesBell from '../Messages/MessagesBell';
 import xpService from '../../services/xpService';
+import RewardProgressCard from './RewardProgressCard';
+import { RewardProgress } from '../../types/auth.types';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -31,7 +33,7 @@ export const PrivyProfilePage: React.FC = () => {
     loading: true,
     syncing: false,
   });
-  const [xpBalance, setXpBalance] = useState<number | null>(null);
+  const [rewards, setRewards] = useState<Partial<RewardProgress>>({});
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
     // Check both localStorage keys (pfpService saves to cto_user_avatar_url)
     return localStorage.getItem('cto_user_avatar_url') || 
@@ -56,10 +58,11 @@ export const PrivyProfilePage: React.FC = () => {
     const loadXp = async () => {
       try {
         const res = await xpService.getBalance();
-        const balance = res?.balance ?? res?.xpBalance ?? res?.data?.balance;
-        if (typeof balance === 'number') {
-          setXpBalance(balance);
-        }
+        setRewards((prev) => ({
+          ...prev,
+          ...res,
+          xpBalance: typeof (res?.balance ?? res?.xpBalance) === 'number' ? (res.balance ?? res.xpBalance) : prev.xpBalance,
+        }));
       } catch {
         // best-effort
       }
@@ -417,7 +420,7 @@ export const PrivyProfilePage: React.FC = () => {
                   🎉 Welcome to CTO Marketplace!
                 </h1>
                 <p className="text-gray-600">{email}</p>
-                <p className="text-sm text-gray-500 mt-1">XP Balance: {xpBalance ?? 0}</p>
+                <p className="text-sm text-gray-500 mt-1">XP Balance: {rewards.xpBalance ?? 0}</p>
                 <p className="text-sm text-gray-400 mt-1">Privy ID: {user?.id}</p>
               </div>
             </div>
@@ -442,6 +445,8 @@ export const PrivyProfilePage: React.FC = () => {
 
         {/* PROFESSIONAL ADDITION: Movement Wallet Dashboard */}
         <MovementWalletActivity onActivityUpdate={setActivityState} />
+
+        <RewardProgressCard rewards={rewards} className="mb-6" />
 
         {/* Profile Tabs */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">

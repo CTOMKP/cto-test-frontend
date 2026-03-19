@@ -5,6 +5,9 @@ import messagesService from '../../services/messagesService';
 import xpService from '../../services/xpService';
 import MarketplaceTopNav from './MarketplaceTopNav';
 import toast from 'react-hot-toast';
+import { persistRewardData } from '../../utils/rewardStorage';
+
+const START_CONVERSATION_XP_COST = 15;
 
 export default function MarketplaceApply() {
   const { id } = useParams();
@@ -25,7 +28,8 @@ export default function MarketplaceApply() {
       .then((data) => mounted && setAd(data))
       .finally(() => mounted && setLoading(false));
     xpService.getMe().then((data) => {
-      if (mounted) setXpBalance(data?.balance ?? 0);
+      const balance = data?.balance ?? data?.xpBalance ?? 0;
+      if (mounted) setXpBalance(balance);
     });
     return () => {
       mounted = false;
@@ -34,13 +38,21 @@ export default function MarketplaceApply() {
 
   const minChars = 500;
   const remaining = Math.max(minChars - coverLetter.trim().length, 0);
-  const canSubmit = coverLetter.trim().length >= minChars && xpBalance >= 8;
+  const canSubmit = coverLetter.trim().length >= minChars && xpBalance >= START_CONVERSATION_XP_COST;
 
   const handleSubmit = async () => {
     if (!id || !canSubmit) return;
     try {
       setSubmitting(true);
       const res = await messagesService.apply(id, coverLetter.trim());
+      const latestRewards = await xpService.getMe().catch(() => null);
+      if (latestRewards) {
+        const nextBalance = latestRewards?.balance ?? latestRewards?.xpBalance;
+        if (typeof nextBalance === 'number') {
+          setXpBalance(nextBalance);
+        }
+        persistRewardData(latestRewards);
+      }
       setSent(true);
       if (res?.conversation?.id) {
         setTimeout(() => {
@@ -137,9 +149,9 @@ export default function MarketplaceApply() {
             <span>{remaining} characters remaining</span>
           </div>
 
-          {xpBalance < 8 && (
+          {xpBalance < START_CONVERSATION_XP_COST && (
             <div className="mt-3 text-xs text-red-400">
-              You need 8 XP to start a conversation.
+              You need {START_CONVERSATION_XP_COST} XP to start a conversation.
             </div>
           )}
 

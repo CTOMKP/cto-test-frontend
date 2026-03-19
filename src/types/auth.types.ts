@@ -7,8 +7,42 @@ export interface User {
   bio?: string | null;
   role?: string;
   xpBalance?: number;
+  rankScore?: number;
+  rankTier?: number;
+  rankLevel?: number;
+  rankLabel?: string;
+  rankEmoji?: string;
+  nextRankTier?: number | null;
+  nextRankLevel?: number | null;
+  nextRankLabel?: string | null;
+  progressPercent?: number;
+  scoreProgressPercent?: number;
+  dayProgressPercent?: number;
+  rankScoreToNext?: number;
+  daysToNext?: number;
+  daysOnPlatform?: number;
+  currentStreakDays?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RewardProgress {
+  xpBalance: number;
+  rankScore: number;
+  rankTier: number;
+  rankLevel: number;
+  rankLabel: string;
+  rankEmoji: string;
+  nextRankTier?: number | null;
+  nextRankLevel?: number | null;
+  nextRankLabel?: string | null;
+  progressPercent: number;
+  scoreProgressPercent: number;
+  dayProgressPercent: number;
+  rankScoreToNext: number;
+  daysToNext: number;
+  daysOnPlatform: number;
+  currentStreakDays: number;
 }
 
 export interface AuthState {
@@ -40,6 +74,5 @@ export interface AuthError {
   message: string;
   field?: string;
 }
-
 
 

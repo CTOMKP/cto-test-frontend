@@ -18,6 +18,8 @@ import { HarvestGrape } from '../PFP/HarvestGrape';
 import xpService from '../../services/xpService';
 import NotificationsBell from '../Notifications/NotificationsBell';
 import MessagesBell from '../Messages/MessagesBell';
+import RewardProgressCard from './RewardProgressCard';
+import { RewardProgress } from '../../types/auth.types';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,7 +36,24 @@ export const ProfilePage: React.FC = () => {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [showFundingModal, setShowFundingModal] = useState(false);
-  const [xpBalance, setXpBalance] = useState<number | null>(user?.xpBalance ?? null);
+  const [rewards, setRewards] = useState<Partial<RewardProgress>>({
+    xpBalance: user?.xpBalance,
+    rankTier: user?.rankTier,
+    rankLevel: user?.rankLevel,
+    rankLabel: user?.rankLabel,
+    rankEmoji: user?.rankEmoji,
+    nextRankTier: user?.nextRankTier,
+    nextRankLevel: user?.nextRankLevel,
+    nextRankLabel: user?.nextRankLabel,
+    progressPercent: user?.progressPercent,
+    scoreProgressPercent: user?.scoreProgressPercent,
+    dayProgressPercent: user?.dayProgressPercent,
+    rankScoreToNext: user?.rankScoreToNext,
+    daysToNext: user?.daysToNext,
+    daysOnPlatform: user?.daysOnPlatform,
+    currentStreakDays: user?.currentStreakDays,
+    rankScore: user?.rankScore,
+  });
 
   // Profile images - check both localStorage keys and backend
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
@@ -243,11 +262,11 @@ export const ProfilePage: React.FC = () => {
     const loadXp = async () => {
       try {
         const res = await xpService.getBalance();
-        const balance = res?.balance ?? res?.xpBalance ?? res?.data?.balance;
-        if (typeof balance === 'number') {
-          setXpBalance(balance);
-          localStorage.setItem('cto_user_xp', String(balance));
-        }
+        setRewards((prev) => ({
+          ...prev,
+          ...res,
+          xpBalance: typeof (res?.balance ?? res?.xpBalance) === 'number' ? (res.balance ?? res.xpBalance) : prev.xpBalance,
+        }));
       } catch {
         // best-effort
       }
@@ -329,7 +348,7 @@ export const ProfilePage: React.FC = () => {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
               <p className="text-gray-600">Welcome back, {user.email}</p>
-              <p className="text-sm text-gray-500">XP Balance: {xpBalance ?? user.xpBalance ?? 0}</p>
+              <p className="text-sm text-gray-500">XP Balance: {rewards.xpBalance ?? user.xpBalance ?? 0}</p>
             </div>
             <div className="flex space-x-3 items-center">
               <MessagesBell />
@@ -488,6 +507,7 @@ export const ProfilePage: React.FC = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <RewardProgressCard rewards={rewards} className="mb-8" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Wallet Info & QR Code */}
           <div className="lg:col-span-1 space-y-6">

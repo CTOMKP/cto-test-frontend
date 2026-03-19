@@ -2,6 +2,7 @@ import axios from 'axios';
 import { LoginCredentials, SignUpCredentials, AuthResponse, User } from '../types/auth.types';
 import { API_ENDPOINTS } from '../utils/constants';
 import { handleApiError } from '../utils/helpers';
+import { clearRewardData, getStoredRewardData, persistRewardData } from '../utils/rewardStorage';
 
 class AuthService {
   private baseUrl: string;
@@ -179,6 +180,7 @@ class AuthService {
     this.removeToken();
     localStorage.removeItem('cto_user_email');
     localStorage.removeItem('cto_wallet_id');
+    clearRewardData();
   }
 
   async getCurrentUser(): Promise<User | null> {
@@ -192,7 +194,7 @@ class AuthService {
       id: email,
       email: email,
       walletId: localStorage.getItem('cto_wallet_id') || '',
-      xpBalance: localStorage.getItem('cto_user_xp') ? Number(localStorage.getItem('cto_user_xp')) : undefined,
+      ...getStoredRewardData(),
       createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -206,6 +208,7 @@ class AuthService {
         { headers: this.getHeaders() }
       );
 
+      persistRewardData(response.data.user);
       return response.data.user;
     } catch (error) {
       throw new Error(`Failed to update user: ${handleApiError(error)}`);
