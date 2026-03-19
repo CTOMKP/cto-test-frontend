@@ -577,7 +577,7 @@ export default function MarketDashboard() {
 
                 const card = (
                   <div
-                    className={`rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-black/80 p-5 transition ${
+                    className={`flex h-full flex-col rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-black/80 p-5 transition ${
                       spotlight ? 'lg:col-span-2' : ''
                     }`}
                   >
@@ -608,13 +608,33 @@ export default function MarketDashboard() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-4 flex flex-1 flex-col space-y-2">
                       <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
                         {ad.category || 'Marketplace'} · {ad.subCategory || ad.category || 'General'}
                       </p>
-                      <h3 className="text-lg font-semibold">{ad.title}</h3>
-                      <p className="text-sm text-zinc-400">{ad.cta || ad.description || 'View details'}</p>
-                      <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+                      <h3
+                        className="min-h-[3.5rem] text-lg font-semibold leading-7"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {ad.title}
+                      </h3>
+                      <p
+                        className="min-h-[6rem] text-sm leading-6 text-zinc-400"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: spotlight ? 5 : 4,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {ad.cta || ad.description || 'View details'}
+                      </p>
+                      <div className="mt-auto flex flex-wrap gap-3 pt-2 text-xs text-zinc-500">
                         {typeof postedDays === 'number' && <span>Posted {postedDays}d ago</span>}
                       </div>
                     </div>
@@ -622,11 +642,11 @@ export default function MarketDashboard() {
                 );
 
                 return ad.id ? (
-                  <Link key={ad.id} to={`/marketplace/ads/${ad.id}`} className="block">
+                  <Link key={ad.id} to={`/marketplace/ads/${ad.id}`} className="block h-full">
                     {card}
                   </Link>
                 ) : (
-                  <div key={ad.title}>{card}</div>
+                  <div key={ad.title} className="h-full">{card}</div>
                 );
               })}
             </div>
