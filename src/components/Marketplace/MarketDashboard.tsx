@@ -1,6 +1,6 @@
 ﻿
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
@@ -13,7 +13,7 @@ import MarketplaceTopNav from './MarketplaceTopNav';
 
 const MARKETPLACE_ASSET_BASE = '/marketplace';
 
-type StepKey = 'market' | 'category' | 'details' | 'preview' | 'payment' | 'success' | 'summary' | 'live';
+type StepKey = 'market' | 'category' | 'details' | 'preview' | 'payment' | 'success' | 'summary';
 type PostType = 'LOOKING_FOR' | 'OFFERING';
 type Tier = 'FREE' | 'PLUS' | 'PREMIUM';
 
@@ -150,6 +150,7 @@ const getDaysAgo = (dateStr?: string | null) => {
 };
 
 export default function MarketDashboard() {
+  const navigate = useNavigate();
   const [now, setNow] = useState(() => Date.now());
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
@@ -485,11 +486,6 @@ export default function MarketDashboard() {
   const addEmptySlot = () => {
     if (draft.images.length >= maxImages) return;
     updateDraft({ images: [...draft.images, new File([], '')], imagePreviews: [...draft.imagePreviews, ''] });
-  };
-
-  const handlePublish = () => {
-    if (!agreeRules) return;
-    setStep('live');
   };
 
   return (
@@ -1167,103 +1163,59 @@ export default function MarketDashboard() {
         {step === 'summary' && (
           <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/80 p-8">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Payment & Publish</h2>
-              <button className="text-zinc-400" onClick={() => setStep('payment')}>
-                ?
-              </button>
+              <h2 className="text-xl font-semibold">Ad Submitted</h2>
+              <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-300">
+                PENDING_APPROVAL
+              </span>
+            </div>
+            <div className="mt-4 text-sm text-zinc-400">
+              Your payment has been confirmed. The ad is now under admin review and is not live yet.
             </div>
             <div className="mt-4 text-right text-sm text-zinc-400">Ads ID: {adId || adsId}</div>
             <div className="mt-6 space-y-3 text-sm">
               <div className="flex items-center justify-between">
-                <span>Listing</span>
-                <span className="text-amber-400">${tierPrice.toFixed(0)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Boost</span>
-                <span className="text-amber-400">${(autoBumpPrice + homepagePrice + urgentPrice + multiChainPrice).toFixed(0)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Images(x{uploadedImageCount || 0})</span>
-                <span className="text-amber-400">${imageAddonPrice.toFixed(0)}</span>
+                <span>Title</span>
+                <span className="text-right text-zinc-200">{draft.adTitle || 'Untitled ad'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Category</span>
-                <span className="text-amber-400">${categoryPrice.toFixed(0)}</span>
+                <span className="text-right text-zinc-200">
+                  {draft.category || 'Uncategorized'}
+                  {draft.subCategory ? ` / ${draft.subCategory}` : ''}
+                </span>
               </div>
-            </div>
-            <div className="mt-6 border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between">
+                <span>Tier</span>
+                <span className="text-zinc-200">{draft.tier}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Payment</span>
+                <span className="text-zinc-200">
+                  {draft.amount || '--'} {draft.paymentType || 'USDC'}
+                </span>
+              </div>
               <div className="flex items-center justify-between text-lg">
-                <span>Total</span>
+                <span>Listing fee paid</span>
                 <span className="text-amber-400">${estimatedTotal.toFixed(0)}</span>
               </div>
-              <label className="mt-4 flex items-center gap-2 text-xs text-zinc-400">
-                <input type="checkbox" checked={agreeRules} onChange={(e) => setAgreeRules(e.target.checked)} /> I agree to the{' '}
-                <span className="text-amber-400">Community Rules</span>
-              </label>
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/60 p-4 text-sm text-zinc-400">
+              Once an admin approves the ad, it will move from <span className="text-amber-300">Pending Approval</span> to
+              <span className="text-emerald-300"> Published</span> and appear publicly in the marketplace.
+            </div>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
-                className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black disabled:opacity-40"
-                disabled={!agreeRules}
-                onClick={handlePublish}
+                className="rounded-full border border-white/10 px-6 py-3 text-sm text-zinc-300"
+                onClick={() => navigate('/profile')}
               >
-                Pay & Publish
+                View My Ads
               </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'live' && (
-          <div className="rounded-3xl border border-white/10 bg-black/80 p-10 text-center">
-            <h2 className="text-2xl font-semibold">You're Live</h2>
-            <div className="mt-6 rounded-3xl border border-white/10 bg-black/60 p-8">
-              <div className="text-lg font-semibold">You're Live</div>
-              <div className="mt-3 text-sm text-blue-400">https://ctomarketplace.com/listing/bagzilla</div>
-              <div className="mt-4 flex justify-center gap-3">
-                {['Reddit', 'Meta', 'X', 'Copy'].map((label) => (
-                  <button
-                    key={label}
-                    onClick={handleShare}
-                    className="rounded-full border border-white/10 px-4 py-2 text-xs text-zinc-400"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-6 rounded-full border border-white/10 px-4 py-2 text-xs text-zinc-400">
-                Bumped Ads Get 3x More DMs In The First 24 Hours
-              </div>
-            </div>
-            <div className="mt-8 flex justify-center">
-              <div className="w-full max-w-xs rounded-3xl border border-white/10 bg-black/60 p-4 text-left">
-                                <div className="relative h-40 overflow-hidden rounded-2xl">
-                  <img
-                    src={`${MARKETPLACE_ASSET_BASE}/marketplace-full.png`}
-                    alt="Market ad"
-                    className="h-full w-full object-cover"
-                  />
-                  <span className="absolute left-3 top-3 rounded-full bg-orange-500/90 px-3 py-1 text-xs uppercase tracking-[0.2em] text-black">
-                    10d : 28m : 34s
-                  </span>
-                </div>
-                <div className="mt-3 text-sm font-semibold">Liquidity Partner Needed</div>
-                <div className="text-xs text-zinc-400">by @DegenFund</div>
-                <div className="mt-3 flex justify-between text-xs text-zinc-500">
-                  <span>Payment</span>
-                  <span>Price</span>
-                </div>
-                <div className="mt-2 flex justify-between text-xs text-zinc-400">
-                  <span>Revenue share</span>
-                  <span>-</span>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2 text-[10px] text-zinc-500">
-                  {['#Liquidity', '#Partner', '#RevenueShare', '#Launch'].map((tag) => (
-                    <span key={tag} className="rounded-full border border-white/10 px-2 py-1">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <button
+                className="rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
+                onClick={() => navigate('/market')}
+              >
+                Back to Marketplace
+              </button>
             </div>
           </div>
         )}
