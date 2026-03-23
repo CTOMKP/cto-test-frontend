@@ -41,6 +41,42 @@ class AuthService {
     localStorage.removeItem('cto_auth_token');
   }
 
+  private async fetchProfile(): Promise<User | null> {
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
+      const response = await axios.get(
+        `${backendUrl}/api/v1/auth/profile`,
+        { headers: this.getHeaders() }
+      );
+
+      const profile = response.data;
+      if (!profile?.email) return null;
+
+      if (profile.id) localStorage.setItem('cto_user_id', String(profile.id));
+      localStorage.setItem('cto_user_email', profile.email);
+      if (profile.name) {
+        localStorage.setItem('cto_user_name', profile.name);
+      } else if (Object.prototype.hasOwnProperty.call(profile, 'name')) {
+        localStorage.removeItem('cto_user_name');
+      }
+      if (profile.createdAt) {
+        localStorage.setItem('cto_user_created', profile.createdAt);
+      }
+      if (profile.walletId) {
+        localStorage.setItem('cto_wallet_id', profile.walletId);
+      }
+      if (profile.avatarUrl) {
+        localStorage.setItem('cto_user_avatar_url', profile.avatarUrl);
+        localStorage.setItem('profile_avatar_url', profile.avatarUrl);
+      }
+      persistRewardData(profile);
+
+      return profile;
+    } catch (error) {
+      return null;
+    }
+  }
+
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
@@ -64,9 +100,11 @@ class AuthService {
         // Login successful, store token and return user info
         const { token, user } = response.data;
         this.setToken(token);
+        const profile = await this.fetchProfile();
+        const resolvedUser = profile || user;
         
         return {
-          user,
+          user: resolvedUser,
           token,
           message: 'Login successful'
         };
@@ -185,11 +223,16 @@ class AuthService {
   }
 
   async getCurrentUser(): Promise<User | null> {
-    // Get user info from localStorage since we don't have JWT endpoints
-    const email = localStorage.getItem('cto_user_email');
     const token = this.getToken();
     
-    if (!email || !token) return null;
+    if (!token) return null;
+
+    const profile = await this.fetchProfile();
+    if (profile) return profile;
+
+    // Fallback to localStorage if profile fetch fails
+    const email = localStorage.getItem('cto_user_email');
+    if (!email) return null;
 
     return {
       id: email,

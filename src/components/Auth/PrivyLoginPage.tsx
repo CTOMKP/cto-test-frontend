@@ -236,6 +236,43 @@ export const PrivyLoginPage: React.FC = () => {
       }
 
       console.log('✅ Backend sync successful');
+      try {
+        const profileResponse = await axios.get(
+          `${backendUrl}/api/v1/auth/profile`,
+          {
+            headers: {
+              Authorization: `Bearer ${responseData.token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        const profile = profileResponse.data;
+        if (profile?.id) {
+          localStorage.setItem('cto_user_id', String(profile.id));
+        }
+        if (profile?.email) {
+          localStorage.setItem('cto_user_email', profile.email);
+        }
+        if (typeof profile?.name === 'string') {
+          if (profile.name) {
+            localStorage.setItem('cto_user_name', profile.name);
+          } else {
+            localStorage.removeItem('cto_user_name');
+          }
+        }
+        if (profile?.createdAt) {
+          localStorage.setItem('cto_user_created', profile.createdAt);
+        }
+        if (profile?.avatarUrl) {
+          const cloudfrontUrl = getCloudFrontUrl(profile.avatarUrl);
+          localStorage.setItem('cto_user_avatar_url', cloudfrontUrl);
+          localStorage.setItem('profile_avatar_url', cloudfrontUrl);
+        }
+        persistRewardData(profile);
+        return { ...responseData, user: { ...responseData.user, ...profile } };
+      } catch {
+        // keep sync payload if profile refresh fails
+      }
       return responseData;
     } catch (error: any) {
       console.error('❌ Backend sync call failed:', error.message);

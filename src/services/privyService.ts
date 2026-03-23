@@ -28,9 +28,33 @@ class PrivyService {
         localStorage.setItem('cto_auth_token', response.data.token);
         localStorage.setItem('cto_user_email', response.data.user.email);
         localStorage.setItem('cto_user_id', response.data.user.id.toString());
+        if (response.data.user.name) {
+          localStorage.setItem('cto_user_name', response.data.user.name);
+        }
         
         if (response.data.user.walletAddress) {
           localStorage.setItem('cto_wallet_address', response.data.user.walletAddress);
+        }
+
+        try {
+          const profileResponse = await axios.get(
+            `${API_ENDPOINTS.auth.base}/api/v1/auth/profile`,
+            {
+              headers: {
+                Authorization: `Bearer ${response.data.token}`,
+              },
+            }
+          );
+          const profile = profileResponse.data;
+          if (typeof profile?.name === 'string') {
+            if (profile.name) {
+              localStorage.setItem('cto_user_name', profile.name);
+            } else {
+              localStorage.removeItem('cto_user_name');
+            }
+          }
+        } catch {
+          // best-effort; keep sync payload if profile fetch fails
         }
 
         console.log('✅ Privy user synced with CTO backend');
@@ -127,6 +151,7 @@ class PrivyService {
   logout() {
     localStorage.removeItem('cto_auth_token');
     localStorage.removeItem('cto_user_email');
+    localStorage.removeItem('cto_user_name');
     localStorage.removeItem('cto_user_id');
     localStorage.removeItem('cto_wallet_address');
     localStorage.removeItem('cto_token');
