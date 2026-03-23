@@ -203,6 +203,9 @@ export const PrivyLoginPage: React.FC = () => {
       localStorage.setItem('cto_auth_token', responseData.token);
       localStorage.setItem('cto_user_id', responseData.user.id.toString());
       localStorage.setItem('cto_user_email', responseData.user.email);
+      if (responseData.user.name) {
+        localStorage.setItem('cto_user_name', responseData.user.name);
+      }
       if (responseData.user.createdAt) {
         localStorage.setItem('cto_user_created', responseData.user.createdAt);
       }

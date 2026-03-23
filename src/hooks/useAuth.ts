@@ -118,6 +118,7 @@ export const useAuth = () => {
       
       // First check localStorage for existing auth data
       const storedEmail = localStorage.getItem('cto_user_email');
+      const storedName = localStorage.getItem('cto_user_name');
       const storedUserId = localStorage.getItem('cto_user_id'); // Real numeric ID
       const storedToken = localStorage.getItem('cto_auth_token');
       const storedWalletId = localStorage.getItem('cto_wallet_id');
@@ -135,6 +136,7 @@ export const useAuth = () => {
         const user: User = {
           id: storedUserId,
           email: storedEmail || '',
+          name: storedName || undefined,
           walletId: storedWalletId || '',
           ...storedRewards,
           createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
@@ -156,6 +158,7 @@ export const useAuth = () => {
         const user: User = {
           id: storedEmail,
           email: storedEmail,
+          name: storedName || undefined,
           walletId: storedWalletId || '',
           ...storedRewards,
           createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
@@ -191,6 +194,7 @@ export const useAuth = () => {
         // STRATEGIC FIX: Update localStorage with the real numeric ID and walletId from the API
         if (user.id) localStorage.setItem('cto_user_id', String(user.id));
         if (user.walletId) localStorage.setItem('cto_wallet_id', user.walletId);
+        if (user.name) localStorage.setItem('cto_user_name', user.name);
         persistRewardData(user);
         
         setAuthState({
@@ -240,6 +244,9 @@ export const useAuth = () => {
       // Store user data in localStorage
       localStorage.setItem('cto_user_email', response.user.email);
       localStorage.setItem('cto_user_created', response.user.createdAt);
+      if (response.user.name) {
+        localStorage.setItem('cto_user_name', response.user.name);
+      }
       if (response.user.walletId) {
         localStorage.setItem('cto_wallet_id', response.user.walletId);
       }
@@ -306,6 +313,9 @@ export const useAuth = () => {
       // Store user data in localStorage
       localStorage.setItem('cto_user_email', response.user.email);
       localStorage.setItem('cto_user_created', response.user.createdAt);
+      if (response.user.name) {
+        localStorage.setItem('cto_user_name', response.user.name);
+      }
       if (response.user.walletId) {
         localStorage.setItem('cto_wallet_id', response.user.walletId);
       }
@@ -335,6 +345,7 @@ export const useAuth = () => {
       
       // Clear all localStorage data first
       localStorage.removeItem('cto_user_email');
+      localStorage.removeItem('cto_user_name');
       localStorage.removeItem('cto_user_created');
       localStorage.removeItem('cto_wallet_id');
       localStorage.removeItem('cto_auth_token');
@@ -367,6 +378,7 @@ export const useAuth = () => {
       console.error('Logout error:', error);
       // Even if logout fails, clear everything and redirect
       localStorage.removeItem('cto_user_email');
+      localStorage.removeItem('cto_user_name');
       localStorage.removeItem('cto_user_created');
       localStorage.removeItem('cto_wallet_id');
       localStorage.removeItem('cto_auth_token');
@@ -389,6 +401,11 @@ export const useAuth = () => {
     try {
       const updatedUser = await authService.updateUser(userId, updates);
       persistRewardData(updatedUser);
+      if (updatedUser.name) {
+        localStorage.setItem('cto_user_name', updatedUser.name);
+      } else if (Object.prototype.hasOwnProperty.call(updatedUser, 'name')) {
+        localStorage.removeItem('cto_user_name');
+      }
       
       setAuthState(prev => ({
         ...prev,

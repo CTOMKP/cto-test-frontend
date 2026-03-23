@@ -16,7 +16,7 @@ import { RewardProgress } from '../../types/auth.types';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout, authenticated, ready, getAccessToken } = usePrivy();
+  const { user, logout, authenticated, ready } = usePrivy();
   const [movementWallet, setMovementWallet] = useState<string | null>(null);
   const [isCreatingMovement, setIsCreatingMovement] = useState(false);
   const [isSyncingWallets, setIsSyncingWallets] = useState(false);
@@ -40,6 +40,11 @@ export const PrivyProfilePage: React.FC = () => {
            localStorage.getItem('profile_avatar_url') || 
            '';
   });
+  const [displayName, setDisplayName] = useState<string>(() => {
+    const stored = localStorage.getItem('cto_user_name');
+    return stored || '';
+  });
+  const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
 
@@ -70,6 +75,12 @@ export const PrivyProfilePage: React.FC = () => {
     if (authenticated) loadXp();
   }, [authenticated]);
 
+  useEffect(() => {
+    const fallback = user?.email?.address?.split('@')[0] || user?.wallet?.address || 'User';
+    const nextDisplayName = (localStorage.getItem('cto_user_name') || fallback).trim();
+    setDisplayName(nextDisplayName);
+  }, [user?.email?.address, user?.wallet?.address]);
+
   // Load avatar from backend
   const loadAvatarFromBackend = async () => {
     try {
@@ -93,8 +104,53 @@ export const PrivyProfilePage: React.FC = () => {
         localStorage.setItem('cto_user_avatar_url', response.data.avatarUrl);
         localStorage.setItem('profile_avatar_url', response.data.avatarUrl);
       }
+      if (typeof response.data?.name === 'string') {
+        localStorage.setItem('cto_user_name', response.data.name);
+        setDisplayName(response.data.name);
+      }
     } catch (error) {
       console.error('Failed to load avatar from backend:', error);
+    }
+  };
+
+  const handleSaveDisplayName = async () => {
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      toast.error('Display name cannot be empty');
+      return;
+    }
+    if (trimmed.length > 100) {
+      toast.error('Display name must be 100 characters or less');
+      return;
+    }
+
+    const token = localStorage.getItem('cto_auth_token');
+    if (!token) {
+      toast.error('Session expired. Please login again.');
+      return;
+    }
+
+    try {
+      setIsSavingDisplayName(true);
+      const response = await axios.put(
+        `${backendUrl}/api/v1/auth/users/me`,
+        { name: trimmed },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      const nextName = response.data?.user?.name || trimmed;
+      setDisplayName(nextName);
+      localStorage.setItem('cto_user_name', nextName);
+      toast.success('Display name updated');
+    } catch (error) {
+      console.error('Failed to update display name:', error);
+      toast.error('Failed to update display name');
+    } finally {
+      setIsSavingDisplayName(false);
     }
   };
 
@@ -393,6 +449,7 @@ export const PrivyProfilePage: React.FC = () => {
   
   const displayWallets = Array.from(walletMap.values());
   const email = user?.email?.address || user?.wallet?.address || 'Privy User';
+  const fallbackDisplayName = user?.email?.address?.split('@')[0] || user?.wallet?.address || 'User';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4">
@@ -419,7 +476,26 @@ export const PrivyProfilePage: React.FC = () => {
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
                   🎉 Welcome to CTO Marketplace!
                 </h1>
-                <p className="text-gray-600">{email}</p>
+                <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    maxLength={100}
+                    className="w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-cto-purple focus:outline-none"
+                    placeholder="Set your display name"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveDisplayName}
+                    disabled={isSavingDisplayName}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSavingDisplayName ? 'Saving...' : 'Save display name'}
+                  </button>
+                </div>
+                <p className="text-gray-600">{displayName || fallbackDisplayName}</p>
+                <p className="text-sm text-gray-500">{email}</p>
                 <p className="text-sm text-gray-500 mt-1">XP Balance: {rewards.xpBalance ?? 0}</p>
                 <p className="text-sm text-gray-400 mt-1">Privy ID: {user?.id}</p>
               </div>

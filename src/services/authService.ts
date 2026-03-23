@@ -179,6 +179,7 @@ class AuthService {
     // Simply remove the token from localStorage
     this.removeToken();
     localStorage.removeItem('cto_user_email');
+    localStorage.removeItem('cto_user_name');
     localStorage.removeItem('cto_wallet_id');
     clearRewardData();
   }
@@ -194,6 +195,7 @@ class AuthService {
       id: email,
       email: email,
       walletId: localStorage.getItem('cto_wallet_id') || '',
+      name: localStorage.getItem('cto_user_name') || undefined,
       ...getStoredRewardData(),
       createdAt: localStorage.getItem('cto_user_created') || new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -202,14 +204,25 @@ class AuthService {
 
   async updateUser(userId: string, updates: Partial<User>): Promise<User> {
     try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
       const response = await axios.put(
-        `${this.baseUrl}/auth/users/${userId}`,
+        `${backendUrl}/api/v1/auth/users/me`,
         updates,
         { headers: this.getHeaders() }
       );
 
-      persistRewardData(response.data.user);
-      return response.data.user;
+      const updatedUser = response.data.user;
+      if (updatedUser?.name) {
+        localStorage.setItem('cto_user_name', updatedUser.name);
+      } else if (Object.prototype.hasOwnProperty.call(updatedUser || {}, 'name')) {
+        localStorage.removeItem('cto_user_name');
+      }
+      if (updatedUser?.avatarUrl) {
+        localStorage.setItem('cto_user_avatar_url', updatedUser.avatarUrl);
+        localStorage.setItem('profile_avatar_url', updatedUser.avatarUrl);
+      }
+      persistRewardData(updatedUser);
+      return updatedUser;
     } catch (error) {
       throw new Error(`Failed to update user: ${handleApiError(error)}`);
     }

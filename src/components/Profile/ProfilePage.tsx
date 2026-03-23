@@ -23,7 +23,7 @@ import { RewardProgress } from '../../types/auth.types';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { user, logout, updateUser, isLoading: authLoading, isAuthenticated } = useAuth();
   const { 
     wallet, 
     balances, 
@@ -65,8 +65,11 @@ export const ProfilePage: React.FC = () => {
   const [profileBannerUrl, setProfileBannerUrl] = useState<string>(() => localStorage.getItem('profile_banner_url') || '');
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [profileBannerUploading, setProfileBannerUploading] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
+  const fallbackDisplayName = (user?.email?.split('@')[0] || 'User').trim();
   const authHeaders = () => {
     const token = localStorage.getItem('cto_auth_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -274,6 +277,12 @@ export const ProfilePage: React.FC = () => {
     if (isAuthenticated) loadXp();
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!user) return;
+    const nextDisplayName = (user.name || localStorage.getItem('cto_user_name') || fallbackDisplayName).trim();
+    setDisplayName(nextDisplayName);
+  }, [user, fallbackDisplayName]);
+
   // Debug logging
   useEffect(() => {
     console.log('🔄 ProfilePage mounted');
@@ -303,6 +312,29 @@ export const ProfilePage: React.FC = () => {
       toast.success('Balances refreshed!');
     } catch (error) {
       console.error('Failed to refresh balances:', error);
+    }
+  };
+
+  const handleSaveDisplayName = async () => {
+    if (!user?.id) return;
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      toast.error('Display name cannot be empty');
+      return;
+    }
+    if (trimmed.length > 100) {
+      toast.error('Display name must be 100 characters or less');
+      return;
+    }
+
+    try {
+      setIsSavingDisplayName(true);
+      const updated = await updateUser(user.id, { name: trimmed });
+      setDisplayName(updated.name?.trim() || trimmed);
+    } catch (error) {
+      console.error('Failed to update display name:', error);
+    } finally {
+      setIsSavingDisplayName(false);
     }
   };
 
@@ -347,8 +379,25 @@ export const ProfilePage: React.FC = () => {
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-              <p className="text-gray-600">Welcome back, {user.email}</p>
+              <p className="text-gray-600">Welcome back, {displayName || fallbackDisplayName}</p>
               <p className="text-sm text-gray-500">XP Balance: {rewards.xpBalance ?? user.xpBalance ?? 0}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  maxLength={100}
+                  className="w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-cto-purple focus:outline-none"
+                  placeholder="Set your display name"
+                />
+                <button
+                  onClick={handleSaveDisplayName}
+                  disabled={isSavingDisplayName}
+                  className="btn-secondary disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingDisplayName ? 'Saving...' : 'Save display name'}
+                </button>
+              </div>
             </div>
             <div className="flex space-x-3 items-center">
               <MessagesBell />
