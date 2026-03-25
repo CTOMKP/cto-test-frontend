@@ -10,6 +10,31 @@ import axios from 'axios';
 
 const CHAINS = ['SOLANA', 'APTOS', 'BNB', 'ETHEREUM', 'SUI', 'BASE', 'NEAR', 'OSMOSIS'];
 
+const APTOS_COIN_TYPE_REGEX =
+  /^0x[a-fA-F0-9]{1,64}::[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*$/;
+const APTOS_HEX_REGEX = /^0x[a-fA-F0-9]{1,64}$/;
+const SOLANA_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const EVM_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+function isValidContractForChain(contract: string, chain: string): boolean {
+  const value = contract.trim();
+  if (!value) return false;
+
+  if (chain === 'APTOS') {
+    return APTOS_COIN_TYPE_REGEX.test(value) || APTOS_HEX_REGEX.test(value);
+  }
+
+  if (chain === 'SOLANA') {
+    return SOLANA_REGEX.test(value);
+  }
+
+  if (chain === 'BASE' || chain === 'ETHEREUM' || chain === 'BNB') {
+    return EVM_REGEX.test(value);
+  }
+
+  return true;
+}
+
 export const CreateUserListing: React.FC = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -210,12 +235,33 @@ export const CreateUserListing: React.FC = () => {
   };
 
   const canProceedPostScan = useMemo(() => !!scanResult, [scanResult]);
+  const contractPlaceholder = useMemo(() => {
+    if (chain === 'APTOS') {
+      return '0x...::module::CoinName or 0x...';
+    }
+    if (chain === 'SOLANA') {
+      return 'Solana contract address (base58, 32-44 chars)';
+    }
+    return 'Enter contract address';
+  }, [chain]);
 
   const handleScan = async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await userListingsService.scan(contractAddr.trim(), chain);
+      const trimmedContract = contractAddr.trim();
+      if (!isValidContractForChain(trimmedContract, chain)) {
+        if (chain === 'APTOS') {
+          throw new Error('Invalid Aptos format. Use 0x...::module::CoinName or 0x... metadata address');
+        }
+        if (chain === 'SOLANA') {
+          throw new Error('Invalid Solana contract address format');
+        }
+        if (chain === 'BASE' || chain === 'ETHEREUM' || chain === 'BNB') {
+          throw new Error(`Invalid ${chain} contract address format`);
+        }
+      }
+      const res = await userListingsService.scan(trimmedContract, chain);
       setScanResult(res);
       // Proceed to Vetting Result (Step 2) after any scan result (eligible or not)
       setStep(2);
@@ -451,7 +497,7 @@ export const CreateUserListing: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm mb-1">Contract Address</label>
-            <input className="border rounded px-3 py-2 w-full" value={contractAddr} onChange={(e) => setContractAddr(e.target.value)} placeholder="Enter contract address"/>
+            <input className="border rounded px-3 py-2 w-full" value={contractAddr} onChange={(e) => setContractAddr(e.target.value)} placeholder={contractPlaceholder}/>
           </div>
           <button disabled={loading || !contractAddr} className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50" onClick={handleScan}>Scan</button>
           {scanResult && (

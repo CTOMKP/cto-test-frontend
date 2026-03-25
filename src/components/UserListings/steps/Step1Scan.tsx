@@ -50,6 +50,41 @@ export default function Step1Scan({
   const [canProceed, setCanProceed] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
+  const aptosCoinTypeRegex =
+    /^0x[a-fA-F0-9]{1,64}::[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*$/;
+  const aptosHexRegex = /^0x[a-fA-F0-9]{1,64}$/;
+  const solanaRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  const evmRegex = /^0x[a-fA-F0-9]{40}$/;
+
+  const placeholderText = useMemo(() => {
+    if (selectedNetwork === 'APTOS') {
+      return 'Enter Aptos coin type (0x...::module::Coin) or metadata address (0x...)';
+    }
+    if (selectedNetwork === 'SOLANA') {
+      return 'Enter Solana contract address (base58, 32-44 chars)';
+    }
+    return 'Enter contract address';
+  }, [selectedNetwork]);
+
+  const validateContractAddress = (address: string, network: string): boolean => {
+    const value = address.trim();
+    if (!value) return false;
+
+    if (network === 'APTOS') {
+      return aptosCoinTypeRegex.test(value) || aptosHexRegex.test(value);
+    }
+
+    if (network === 'SOLANA') {
+      return solanaRegex.test(value);
+    }
+
+    if (network === 'BASE' || network === 'ETHEREUM' || network === 'BNB') {
+      return evmRegex.test(value);
+    }
+
+    return true;
+  };
+
   const createdDate = useMemo(() => {
     const metadata = scanResults?.metadata;
     if (!metadata) return null;
@@ -66,6 +101,23 @@ export default function Step1Scan({
     if (!contractAddress.trim()) {
       toast.error('Please enter a contract address');
       return;
+    }
+
+    if (!validateContractAddress(contractAddress, selectedNetwork)) {
+      if (selectedNetwork === 'APTOS') {
+        toast.error('Use Aptos format: 0x...::module::CoinName or 0x... metadata address');
+        return;
+      }
+
+      if (selectedNetwork === 'SOLANA') {
+        toast.error('Invalid Solana contract address format');
+        return;
+      }
+
+      if (selectedNetwork === 'BASE' || selectedNetwork === 'ETHEREUM' || selectedNetwork === 'BNB') {
+        toast.error(`Invalid ${selectedNetwork} contract address format`);
+        return;
+      }
     }
 
     if (!isAuthenticated) {
@@ -175,7 +227,7 @@ export default function Step1Scan({
       <div className="mt-4 relative flex items-center">
         <input
           type="text"
-          placeholder="Enter Contract address (32-44 characters)"
+          placeholder={placeholderText}
           className="border-[0.2px] border-white/20 h-12 py-3 px-2 bg-white/5 rounded-lg text-white placeholder:text-white/50 w-full focus:outline-none focus:ring-2 focus:ring-pink-500"
           value={contractAddress}
           onChange={(e) => setContractAddress(e.target.value)}
