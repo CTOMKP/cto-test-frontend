@@ -41,6 +41,10 @@ export interface ScanResult {
     scan_timestamp?: string;
     verified?: boolean;
     holder_count?: number;
+    vetting_results?: {
+      missingData?: string[];
+      [key: string]: any;
+    };
     creation_transaction?: string;
     distribution_metrics?: any;
     whale_analysis?: any;

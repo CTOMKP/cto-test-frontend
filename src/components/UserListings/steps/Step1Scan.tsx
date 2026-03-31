@@ -97,6 +97,34 @@ export default function Step1Scan({
     return null;
   }, [scanResults?.metadata]);
 
+  const minimumRequiredScore =
+    scanResults?.minimum_required_score ??
+    scanResults?.details?.minimum_required_score ??
+    50;
+
+  const provisional =
+    scanResults?.provisional ??
+    scanResults?.details?.provisional ??
+    false;
+
+  const provisionalReason =
+    scanResults?.provisional_reason ??
+    scanResults?.details?.provisional_reason ??
+    null;
+
+  const provisionalMissingData = useMemo(() => {
+    const fromRoot = scanResults?.provisional_missing_data;
+    if (Array.isArray(fromRoot) && fromRoot.length > 0) return fromRoot;
+
+    const fromDetails = scanResults?.details?.provisional_missing_data;
+    if (Array.isArray(fromDetails) && fromDetails.length > 0) return fromDetails;
+
+    const fromVetting = scanResults?.metadata?.vetting_results?.missingData;
+    if (Array.isArray(fromVetting) && fromVetting.length > 0) return fromVetting;
+
+    return [];
+  }, [scanResults]);
+
   const startScan = async () => {
     if (!contractAddress.trim()) {
       toast.error('Please enter a contract address');
@@ -503,23 +531,23 @@ export default function Step1Scan({
 
                 {/* Action Buttons */}
                 <div className="flex flex-col items-center gap-3">
-                  {(() => {
-                    const provisionalReason =
-                      scanResults?.provisional_reason ??
-                      scanResults?.details?.provisional_reason ??
-                      null;
-                    return provisionalReason ? (
-                      <div className="w-full py-3 px-4 rounded-lg bg-amber-500/20 border border-amber-500/50">
-                        <p className="text-sm text-amber-300 text-center font-medium">
-                          {provisionalReason}
+                  {(provisional || provisionalReason || provisionalMissingData.length > 0) && (
+                    <div className="w-full py-3 px-4 rounded-lg bg-amber-500/20 border border-amber-500/50">
+                      <p className="text-sm text-amber-300 text-center font-medium">
+                        {provisionalReason ||
+                          `This ${scanResults?.tier || 'tier'} classification is provisional due to missing data from providers.`}
+                      </p>
+                      {provisionalMissingData.length > 0 && (
+                        <p className="text-xs text-amber-200/90 text-center mt-2">
+                          Missing data: {provisionalMissingData.join(', ')}
                         </p>
-                      </div>
-                    ) : null;
-                  })()}
+                      )}
+                    </div>
+                  )}
                   {!canProceed && (
                     <div className="w-full py-3 px-4 rounded-lg bg-red-500/20 border border-red-500/50">
                       <p className="text-sm text-red-400 text-center font-medium">
-                        ⚠️ Risk score too low. Minimum required: {scanResults?.minimum_required_score ?? scanResults?.details?.minimum_required_score ?? 50}
+                        Warning: Risk score too low. Minimum required: {minimumRequiredScore}
                       </p>
                     </div>
                   )}
