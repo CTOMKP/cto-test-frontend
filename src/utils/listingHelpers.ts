@@ -81,9 +81,11 @@ export function compactNumber(value: number | undefined | null, decimals = 1): s
   const abs = Math.abs(value);
   const sign = value < 0 ? '-' : '';
 
-  const format = (num: number, suffix: string) => {
-    const fixed = num.toFixed(decimals);
-    return fixed.endsWith('.0') ? `${sign}${fixed.slice(0, -2)}${suffix}` : `${sign}${fixed}${suffix}`;
+  const format = (num: number, suffix: string, fixedDecimals = decimals) => {
+    const normalized = Number(num);
+    const fixed = normalized.toFixed(fixedDecimals);
+    const trimmed = fixed.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+    return `${sign}${trimmed}${suffix}`;
   };
 
   if (abs >= 1e12) return format(abs / 1e12, 'T');
@@ -91,5 +93,29 @@ export function compactNumber(value: number | undefined | null, decimals = 1): s
   if (abs >= 1e6) return format(abs / 1e6, 'M');
   if (abs >= 1e3) return format(abs / 1e3, 'k');
 
-  return `${value}`;
+  if (abs === 0) return '0';
+  if (abs < 1) return format(abs, '', 6);
+  if (abs < 100) return format(abs, '', 2);
+  if (abs < 1000) return format(abs, '', 1);
+
+  return format(abs, '');
+}
+
+export function formatCompactUsd(value: number | undefined | null): string {
+  if (value === undefined || value === null || !isFinite(value)) {
+    return 'N/A';
+  }
+
+  const abs = Math.abs(value);
+  if (abs >= 1000) {
+    return compactNumber(value);
+  }
+
+  if (abs === 0) return '0';
+  if (abs < 1) {
+    const fixed = value.toFixed(6);
+    return fixed.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+  }
+
+  return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 }

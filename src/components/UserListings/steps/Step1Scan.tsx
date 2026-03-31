@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Zap } from 'lucide-react';
 import userListingsService, { ScanResult } from '../../../services/userListingsService';
-import { getTierColor, getTierIcon, getRiskScoreColor, formatNumber, compactNumber } from '../../../utils/listingHelpers';
+import { getTierColor, getTierIcon, getRiskScoreColor, formatNumber, compactNumber, formatCompactUsd } from '../../../utils/listingHelpers';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
@@ -150,9 +150,14 @@ export default function Step1Scan({
       clearInterval(progressInterval);
       setProgress(100);
 
-      // Check risk score (user listings require risk_score >= 50)
+      // Check backend-provided threshold / eligibility
       const riskScore = result.risk_score ?? 0;
-      const canProceedToNext = riskScore >= 50;
+      const minRequiredScore =
+        result.minimum_required_score ??
+        result.details?.minimum_required_score ??
+        50;
+      const backendEligible = result.eligible ?? result.details?.eligible;
+      const canProceedToNext = backendEligible === true || riskScore >= minRequiredScore;
 
       // Save scan results
       setScanResults(result);
@@ -160,7 +165,7 @@ export default function Step1Scan({
 
       // Show error if risk score is too low
       if (!canProceedToNext) {
-        toast.error(`Token risk score (${riskScore}) is below the minimum required (50). This token cannot be listed.`);
+        toast.error(`Token risk score (${riskScore}) is below the minimum required (${minRequiredScore}). This token cannot be listed.`);
       }
 
       setTimeout(() => {
@@ -448,7 +453,7 @@ export default function Step1Scan({
                           </h3>
                           <div className="flex items-center gap-1 justify-center">
                             <span className="font-bold text-[24px]">
-                              {compactNumber(scanResults.metadata.lp_amount_usd)}
+                              {formatCompactUsd(scanResults.metadata.lp_amount_usd)}
                             </span>
                             {scanResults.metadata.lp_locked && (
                               <span className="text-lg">🔒</span>
@@ -498,10 +503,23 @@ export default function Step1Scan({
 
                 {/* Action Buttons */}
                 <div className="flex flex-col items-center gap-3">
+                  {(() => {
+                    const provisionalReason =
+                      scanResults?.provisional_reason ??
+                      scanResults?.details?.provisional_reason ??
+                      null;
+                    return provisionalReason ? (
+                      <div className="w-full py-3 px-4 rounded-lg bg-amber-500/20 border border-amber-500/50">
+                        <p className="text-sm text-amber-300 text-center font-medium">
+                          {provisionalReason}
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
                   {!canProceed && (
                     <div className="w-full py-3 px-4 rounded-lg bg-red-500/20 border border-red-500/50">
                       <p className="text-sm text-red-400 text-center font-medium">
-                        ⚠️ Risk score too low. Minimum required: 50
+                        ⚠️ Risk score too low. Minimum required: {scanResults?.minimum_required_score ?? scanResults?.details?.minimum_required_score ?? 50}
                       </p>
                     </div>
                   )}

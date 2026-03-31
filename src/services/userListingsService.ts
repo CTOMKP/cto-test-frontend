@@ -12,6 +12,11 @@ export interface ScanResult {
   risk_score: number;
   tier: string;
   risk_level?: string;
+  reason_code?: string | null;
+  minimum_required_score?: number;
+  provisional?: boolean;
+  provisional_reason?: string | null;
+  provisional_missing_data?: string[];
   eligible: boolean;
   summary?: string;
   metadata?: {
@@ -93,6 +98,11 @@ export const userListingsService = {
         risk_score: responseData?.risk_score ?? 0,
         tier: responseData?.tier ?? 'UNQUALIFIED',
         risk_level: responseData?.risk_level,
+        reason_code: responseData?.reason_code ?? null,
+        minimum_required_score: responseData?.minimum_required_score,
+        provisional: responseData?.provisional,
+        provisional_reason: responseData?.provisional_reason ?? null,
+        provisional_missing_data: responseData?.provisional_missing_data ?? [],
         eligible: responseData?.eligible ?? false,
         summary: responseData?.summary,
         metadata: responseData?.metadata,
@@ -110,6 +120,11 @@ export const userListingsService = {
         risk_score: responseData?.risk_score ?? 0,
         tier: responseData?.tier ?? 'UNQUALIFIED',
         risk_level: responseData?.risk_level,
+        reason_code: responseData?.reason_code ?? null,
+        minimum_required_score: responseData?.minimum_required_score,
+        provisional: responseData?.provisional,
+        provisional_reason: responseData?.provisional_reason ?? null,
+        provisional_missing_data: responseData?.provisional_missing_data ?? [],
         eligible: responseData?.eligible ?? false,
         summary: responseData?.summary,
         metadata: responseData?.metadata,
@@ -127,6 +142,11 @@ export const userListingsService = {
       success: false,
       risk_score: responseData?.risk_score ?? 0,
       tier: responseData?.tier ?? 'UNQUALIFIED',
+      reason_code: responseData?.reason_code ?? null,
+      minimum_required_score: responseData?.minimum_required_score,
+      provisional: responseData?.provisional,
+      provisional_reason: responseData?.provisional_reason ?? null,
+      provisional_missing_data: responseData?.provisional_missing_data ?? [],
       eligible: false,
       // Legacy fields
       vettingScore: responseData?.risk_score ?? 0,
