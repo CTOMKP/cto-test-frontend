@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useNavigate } from 'react-router-dom';
 import notificationsService from '../../services/notificationsService';
 import { getBackendUrl } from '../../utils/apiConfig';
 
@@ -18,6 +19,34 @@ export default function NotificationsBell({
   const [busyNotificationId, setBusyNotificationId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const backendUrl = getBackendUrl();
+  const navigate = useNavigate();
+
+  const getNotificationRoute = (n: any): string | null => {
+    if (!n) return null;
+
+    let data: any = n.data;
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        data = null;
+      }
+    }
+
+    if (typeof data?.redirectPath === 'string' && data.redirectPath.startsWith('/')) {
+      return data.redirectPath;
+    }
+
+    if (n.type === 'LISTING_APPROVAL' && data?.listingId) {
+      return `/user-listings/${data.listingId}/live`;
+    }
+
+    if (n.type === 'AD_APPROVAL' && data?.adId) {
+      return `/marketplace/ads/${data.adId}`;
+    }
+
+    return null;
+  };
 
   const loadNotifications = async () => {
     try {
@@ -113,6 +142,12 @@ export default function NotificationsBell({
         prev.map((item) => (item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item))
       );
       setUnreadCount((prev) => (prev > 0 ? prev - 1 : 0));
+      const route = getNotificationRoute(n);
+      if (route) {
+        setOpen(false);
+        navigate(route);
+        return;
+      }
       alert(`${n.title}${n.body ? `\n\n${n.body}` : ''}`);
     } catch {
       // ignore
@@ -200,7 +235,11 @@ export default function NotificationsBell({
                   className="flex-1 text-left"
                 >
                   <div className="text-sm">{n.title}</div>
-                  {n.body && <div className="text-[11px] text-zinc-500">{n.body}</div>}
+                  {(n.body || n.type === 'LISTING_APPROVAL') && (
+                    <div className="text-[11px] text-zinc-500">
+                      {n.body || 'Click to view your approved listing.'}
+                    </div>
+                  )}
                 </button>
                 <button
                   type="button"

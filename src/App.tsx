@@ -8,6 +8,7 @@ import { ListingsPage } from './components/Listing/ListingsPage';
 import CreateUserListingNew from './components/UserListings/CreateUserListingNew';
 import { MyUserListings } from './components/UserListings/MyUserListings';
 import { UserListingDetail } from './components/UserListings/UserListingDetail';
+import { UserListingLivePage } from './components/UserListings/UserListingLivePage';
 import { ListingDetail } from './components/Listing/ListingDetail';
 import UserWormholeBridge from './components/UserWormholeBridge';
 import TokenSwap from './components/TokenSwap';
@@ -157,6 +158,7 @@ const AppContent: React.FC = () => {
       <Route path={ROUTES.admin} element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       {/* User listing public detail route */}
       <Route path="/user-listings/:id" element={<UserListingDetail />} />
+      <Route path="/user-listings/:id/live" element={<ProtectedRoute><UserListingLivePage /></ProtectedRoute>} />
       {/* Public listing detail route */}
       <Route path="/listing/:contractAddress" element={<ListingDetail />} />
       <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
