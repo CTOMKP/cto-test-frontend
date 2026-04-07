@@ -38,6 +38,15 @@ export default function NotificationsBell({
     }
 
     if (n.type === 'LISTING_APPROVAL' && data?.listingId) {
+      const isRejected =
+        data?.status === 'REJECTED' ||
+        data?.action === 'VIEW_REJECTED_LISTING' ||
+        typeof data?.reason === 'string' ||
+        /rejected/i.test(String(n?.title || ''));
+
+      if (isRejected) {
+        return `/user-listings/${data.listingId}`;
+      }
       return `/user-listings/${data.listingId}/live`;
     }
 
@@ -132,6 +141,32 @@ export default function NotificationsBell({
   }, [open]);
 
   const unreadItems = useMemo(() => items.filter((n: any) => !n.readAt), [items]);
+
+  const notificationSubtitle = (n: any): string | null => {
+    if (n?.body) return n.body;
+
+    let data: any = n?.data;
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        data = null;
+      }
+    }
+
+    if (n?.type === 'LISTING_APPROVAL') {
+      const isRejected =
+        data?.status === 'REJECTED' ||
+        data?.action === 'VIEW_REJECTED_LISTING' ||
+        typeof data?.reason === 'string' ||
+        /rejected/i.test(String(n?.title || ''));
+      return isRejected
+        ? 'Click to view rejection feedback.'
+        : 'Click to view your approved listing.';
+    }
+
+    return null;
+  };
 
   const handleClickNotification = async (n: any) => {
     try {
@@ -235,9 +270,9 @@ export default function NotificationsBell({
                   className="flex-1 text-left"
                 >
                   <div className="text-sm">{n.title}</div>
-                  {(n.body || n.type === 'LISTING_APPROVAL') && (
+                  {notificationSubtitle(n) && (
                     <div className="text-[11px] text-zinc-500">
-                      {n.body || 'Click to view your approved listing.'}
+                      {notificationSubtitle(n)}
                     </div>
                   )}
                 </button>
