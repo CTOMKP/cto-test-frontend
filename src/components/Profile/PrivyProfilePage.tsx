@@ -5,6 +5,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { MovementWalletActivity, MovementWalletRecentActivity } from '../UserListings/MovementWalletActivity';
+import { SolanaWalletActivity } from '../UserListings/SolanaWalletActivity';
 import userListingsService from '../../services/userListingsService';
 import marketplaceService from '../../services/marketplaceService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
@@ -519,7 +520,8 @@ export const PrivyProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* PROFESSIONAL ADDITION: Movement Wallet Dashboard */}
+        {/* Wallet Dashboards */}
+        <SolanaWalletActivity />
         <MovementWalletActivity onActivityUpdate={setActivityState} />
 
         <RewardProgressCard rewards={rewards} className="mb-6" />

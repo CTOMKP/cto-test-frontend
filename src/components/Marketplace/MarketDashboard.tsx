@@ -4,9 +4,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
+import solanaPaymentService from '../../services/solanaPaymentService';
+import solanaWalletService from '../../services/solanaWalletService';
 import { usePrivyAuth } from '../../services/privyAuthService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
+import { useWallets } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
+import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { pfpService } from '../../services/pfpService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import MarketplaceTopNav from './MarketplaceTopNav';
@@ -163,6 +167,8 @@ export default function MarketDashboard() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletAddress, setWalletAddress] = useState('');
   const [walletPublicKey, setWalletPublicKey] = useState('');
+  const [solanaBalance, setSolanaBalance] = useState(0);
+  const [solanaAddress, setSolanaAddress] = useState('');
   const [adsId] = useState('#432738');
   const [agreeRules, setAgreeRules] = useState(false);
   const [subCategoryInput, setSubCategoryInput] = useState('');
@@ -172,7 +178,30 @@ export default function MarketDashboard() {
   const [isUploading, setIsUploading] = useState(false);
 
   const { user: privyUser } = usePrivyAuth();
+  const { wallets } = useWallets();
   const { signRawHash } = useSignRawHash();
+
+  const getSolanaWallet = () => {
+    const solWallet =
+      wallets.find((w) => (w as any).chainType === 'solana') ||
+      wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
+      wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
+      wallets.find((w) => {
+        const addr = w.address || '';
+        return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
+      });
+    if (!solWallet) {
+      throw new Error('No Solana wallet found. Please connect a Solana wallet in Privy.');
+    }
+    return solWallet;
+  };
+
+  const decodeBase64 = (base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -251,6 +280,23 @@ export default function MarketDashboard() {
     };
     loadWallet();
   }, []);
+
+  useEffect(() => {
+    try {
+      const solWallet = getSolanaWallet();
+      if (solWallet?.address) {
+        setSolanaAddress(solWallet.address);
+        solanaWalletService
+          .getBalance(solWallet.address)
+          .then((data) => {
+            if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
+          })
+          .catch(() => null);
+      }
+    } catch {
+      // ignore if no Solana wallet
+    }
+  }, [wallets]);
 
   useEffect(() => {
     try {
@@ -342,7 +388,9 @@ export default function MarketDashboard() {
     multiChainPrice +
     imageAddonPrice;
 
-  const lowBalance = walletBalance < estimatedTotal;
+  const isSolanaPayment = (draft.blockchainFocus || '').toUpperCase() === 'SOLANA';
+  const effectiveBalance = isSolanaPayment ? solanaBalance : walletBalance;
+  const lowBalance = effectiveBalance < estimatedTotal;
 
   const updateDraft = (next: Partial<AdDraft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
@@ -430,16 +478,74 @@ export default function MarketDashboard() {
 
   const handlePayment = async () => {
     if (lowBalance) return;
-    if (!walletAddress || !walletPublicKey) {
-      toast.error('Movement wallet not found. Please sync wallets in Profile.');
-      return;
-    }
     try {
       setIsSubmitting(true);
       const nextId = await ensureDraftSaved();
       if (!nextId) throw new Error('Draft not created');
+      if (isSolanaPayment) {
+        const solWallet = getSolanaWallet();
+        const paymentResponse = await solanaPaymentService.createMarketplaceAdPayment(nextId, estimatedTotal);
+        const paymentData = paymentResponse?.data || paymentResponse;
+        const resolvedPaymentId =
+          paymentData?.paymentId || paymentData?.payment?.paymentId || paymentData?.payment?.id;
+        if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
+
+        if (paymentData?.message?.includes('No payment required')) {
+          setStep('success');
+          return;
+        }
+
+        const txBase64 = paymentData?.transaction;
+        if (!txBase64) {
+          throw new Error(paymentData?.message || 'Transaction data missing');
+        }
+
+        const txBytes = decodeBase64(txBase64);
+        let signedTx: any;
+        try {
+          const versioned = VersionedTransaction.deserialize(txBytes);
+          if ('signTransaction' in solWallet && typeof (solWallet as any).signTransaction === 'function') {
+            signedTx = await (solWallet as any).signTransaction(versioned);
+          } else if ((solWallet as any).provider?.signTransaction) {
+            signedTx = await (solWallet as any).provider.signTransaction(versioned);
+          } else {
+            throw new Error('Solana wallet signing not available.');
+          }
+        } catch {
+          const legacy = Transaction.from(txBytes);
+          if ('signTransaction' in solWallet && typeof (solWallet as any).signTransaction === 'function') {
+            signedTx = await (solWallet as any).signTransaction(legacy);
+          } else if ((solWallet as any).provider?.signTransaction) {
+            signedTx = await (solWallet as any).provider.signTransaction(legacy);
+          } else {
+            throw new Error('Solana wallet signing not available.');
+          }
+        }
+
+        const connection = new Connection(
+          process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+          'confirmed'
+        );
+        const raw = signedTx.serialize();
+        const txHash = await connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
+        await connection.confirmTransaction(txHash, 'confirmed');
+
+        if (resolvedPaymentId) {
+          await solanaPaymentService.verifyMarketplaceAdPayment(resolvedPaymentId, txHash);
+        }
+
+        setStep('success');
+        return;
+      }
+
+      if (!walletAddress || !walletPublicKey) {
+        toast.error('Movement wallet not found. Please sync wallets in Profile.');
+        return;
+      }
+
       const paymentResponse = await marketplaceService.createPayment(nextId);
-      const resolvedPaymentId = paymentResponse?.paymentId || paymentResponse?.payment?.paymentId || paymentResponse?.payment?.id;
+      const resolvedPaymentId =
+        paymentResponse?.paymentId || paymentResponse?.payment?.paymentId || paymentResponse?.payment?.id;
       if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
 
       if (paymentResponse?.message?.includes('No payment required')) {
@@ -1138,13 +1244,17 @@ export default function MarketDashboard() {
               <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm">
                 <div className="flex items-center justify-between">
                   <span>Your Wallet Balance:</span>
-                  <span className={lowBalance ? 'text-red-400' : 'text-emerald-400'}>${walletBalance.toFixed(2)} USDC</span>
+                  <span className={lowBalance ? 'text-red-400' : 'text-emerald-400'}>${effectiveBalance.toFixed(2)} USDC</span>
                   <button className="text-amber-400">Fund Wallet</button>
                 </div>
                 {lowBalance ? (
                   <div className="mt-3 text-xs text-zinc-400">
                     Wallet Address
-                    <div className="mt-2 rounded-xl border border-white/10 bg-black/70 p-2 text-xs">{walletAddress || 'Sync your Movement wallet in Profile'}</div>
+                    <div className="mt-2 rounded-xl border border-white/10 bg-black/70 p-2 text-xs">
+                      {isSolanaPayment
+                        ? (solanaAddress || 'Connect your Solana wallet in Privy')
+                        : (walletAddress || 'Sync your Movement wallet in Profile')}
+                    </div>
                   </div>
                 ) : (
                   <p className="mt-3 text-xs text-zinc-400">By clicking on "Pay", the sum will be charged from your wallet balance.</p>
@@ -1152,7 +1262,8 @@ export default function MarketDashboard() {
               </div>
 
               <p className="text-xs text-amber-400">
-                *This app uses USDC as the primary transaction token. Please ensure your wallet is funded.
+                *This app uses USDC as the primary transaction token. Please ensure your {isSolanaPayment ? 'Solana' : 'Movement'} wallet is funded
+                and you have a tiny amount of {isSolanaPayment ? 'SOL' : 'MOVE'} for gas.
               </p>
 
               <button

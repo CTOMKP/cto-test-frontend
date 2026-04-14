@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { privyService } from '../../services/privyService';
 import { movementPaymentService } from '../../services/movementPaymentService';
+import solanaPaymentService from '../../services/solanaPaymentService';
+import solanaWalletService from '../../services/solanaWalletService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
+import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 
 interface ListingPaymentProps {
   listingId: string;
   listingTitle: string;
+  chain?: string;
   onPaymentComplete?: () => void;
   onCancel?: () => void;
 }
@@ -17,19 +21,69 @@ interface ListingPaymentProps {
 export const ListingPayment: React.FC<ListingPaymentProps> = ({
   listingId,
   listingTitle,
+  chain,
   onPaymentComplete,
   onCancel,
 }) => {
   const navigate = useNavigate();
   const { authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
   const { signRawHash } = useSignRawHash();
   const [loading, setLoading] = useState(false);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [movementTxHash, setMovementTxHash] = useState<string | null>(null);
+  const [solanaTxHash, setSolanaTxHash] = useState<string | null>(null);
+  const [solanaBalance, setSolanaBalance] = useState<number | null>(null);
+  const [solanaAddress, setSolanaAddress] = useState<string | null>(null);
 
   const userId = localStorage.getItem('cto_user_email') || '';
   const isPrivyUser = authenticated && user;
+  const chainUpper = (chain || 'MOVEMENT').toUpperCase();
+  const isSolana = chainUpper === 'SOLANA';
+
+  useEffect(() => {
+    if (!isSolana) return;
+    const solWallet =
+      wallets.find((w) => (w as any).chainType === 'solana') ||
+      wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
+      wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
+      wallets.find((w) => {
+        const addr = w.address || '';
+        return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
+      });
+    if (!solWallet?.address) return;
+
+    setSolanaAddress(solWallet.address);
+    solanaWalletService
+      .getBalance(solWallet.address)
+      .then((data) => {
+        if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
+      })
+      .catch(() => null);
+  }, [chainUpper, wallets]);
+
+  const getSolanaWallet = () => {
+    const solWallet =
+      wallets.find((w) => (w as any).chainType === 'solana') ||
+      wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
+      wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
+      wallets.find((w) => {
+        const addr = w.address || '';
+        return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
+      });
+    if (!solWallet) {
+      throw new Error('No Solana wallet found. Please enable Solana in Privy and connect a Solana wallet.');
+    }
+    return solWallet;
+  };
+
+  const decodeBase64 = (base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
 
   const handlePayment = async () => {
     if (!userId) {
@@ -39,6 +93,85 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
     setLoading(true);
     try {
+      if (isSolana) {
+        console.log('Using Solana payment flow');
+
+        if (!isPrivyUser) {
+          toast.error('Privy session not found. Please log out and log back in.');
+          setLoading(false);
+          return;
+        }
+
+        let solanaWallet;
+        try {
+          solanaWallet = getSolanaWallet();
+        } catch (walletError: any) {
+          toast.error(walletError?.message || 'No Solana wallet found.');
+          setLoading(false);
+          return;
+        }
+
+        const paymentResult = await solanaPaymentService.createListingPayment(listingId);
+        const paymentData = paymentResult?.data || paymentResult;
+        if (!paymentData?.success) {
+          throw new Error(paymentData?.message || 'Failed to create payment');
+        }
+
+        setPaymentId(paymentData.paymentId);
+        toast.success('Signing transaction with Privy Solana wallet...');
+
+        const txBase64 = paymentData.transaction;
+        if (!txBase64) {
+          throw new Error('Transaction data missing');
+        }
+
+        let signedTx: any;
+        const txBytes = decodeBase64(txBase64);
+        try {
+          const versioned = VersionedTransaction.deserialize(txBytes);
+          if ('signTransaction' in solanaWallet && typeof (solanaWallet as any).signTransaction === 'function') {
+            signedTx = await (solanaWallet as any).signTransaction(versioned);
+          } else if ((solanaWallet as any).provider?.signTransaction) {
+            signedTx = await (solanaWallet as any).provider.signTransaction(versioned);
+          } else {
+            throw new Error('Solana wallet signing not available.');
+          }
+        } catch {
+          const legacy = Transaction.from(txBytes);
+          if ('signTransaction' in solanaWallet && typeof (solanaWallet as any).signTransaction === 'function') {
+            signedTx = await (solanaWallet as any).signTransaction(legacy);
+          } else if ((solanaWallet as any).provider?.signTransaction) {
+            signedTx = await (solanaWallet as any).provider.signTransaction(legacy);
+          } else {
+            throw new Error('Solana wallet signing not available.');
+          }
+        }
+
+        const connection = new Connection(
+          process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+          'confirmed'
+        );
+        const raw = signedTx.serialize();
+        const txHash = await connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
+        await connection.confirmTransaction(txHash, 'confirmed');
+
+        setSolanaTxHash(txHash);
+        toast.success('Transaction submitted! Verifying payment...');
+
+        const verifyResult = await solanaPaymentService.verifyPayment(paymentData.paymentId, txHash);
+        const verifyData = verifyResult?.data || verifyResult;
+        if (verifyData?.success && verifyData?.payment?.status === 'COMPLETED') {
+          toast.success('Payment confirmed! Listing is now published!');
+          if (onPaymentComplete) onPaymentComplete();
+          setTimeout(() => navigate('/user-listings/mine'), 2000);
+        } else {
+          toast.error('Payment verification failed. Please try again.');
+        }
+
+        setLoading(false);
+        return;
+      }
+
       console.log('Using Movement payment flow');
 
       // Ensure user is actually logged in with Privy
@@ -185,6 +318,32 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   };
 
   const verifyPayment = async (payId: string) => {
+    if (isSolana) {
+      if (!solanaTxHash) {
+        toast.error('Transaction hash not found. Please try the payment again.');
+        return;
+      }
+      setVerifying(true);
+      try {
+        const result = await solanaPaymentService.verifyPayment(payId, solanaTxHash);
+        if (result.payment?.status === 'COMPLETED') {
+          toast.success('Payment confirmed! Listing is now published!');
+          if (onPaymentComplete) onPaymentComplete();
+          setTimeout(() => navigate('/user-listings/mine'), 2000);
+        } else if (result.payment?.status === 'FAILED') {
+          toast.error('Payment failed. Please try again.');
+        } else {
+          toast.loading('Payment still processing. Please check back in a few minutes.');
+        }
+      } catch (error: any) {
+        console.error('Verification failed:', error);
+        toast.error('Failed to verify payment');
+      } finally {
+        setVerifying(false);
+      }
+      return;
+    }
+
     if (!movementTxHash) {
       toast.error('Transaction hash not found. Please try the payment again.');
       return;
@@ -289,14 +448,14 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
             </button>
 
             <p className="text-xs text-gray-500 text-center">
-              ⏱️ Payments confirm instantly on Movement L1
+              ⏱️ Payments confirm instantly on {isSolana ? 'Solana' : 'Movement'}. 
             </p>
           </div>
         )}
 
         <div className="mt-6 pt-4 border-t border-gray-200">
           <p className="text-xs text-gray-500">
-            <strong>Note:</strong> Ensure you have at least 1.0 USDC in your Movement wallet. You will also need a tiny amount of MOVE for gas.
+            <strong>Note:</strong> Ensure you have at least 1.0 USDC in your {isSolana ? 'Solana' : 'Movement'} wallet. {isSolana ? ' You will also need a tiny amount of SOL for gas.' : ' You will also need a tiny amount of MOVE for gas.'}
           </p>
         </div>
       </div>
@@ -305,3 +464,4 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 };
 
 export default ListingPayment;
+

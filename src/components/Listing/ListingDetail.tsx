@@ -103,7 +103,7 @@ export const ListingDetail: React.FC = () => {
   const isBaseChain = chainType === 'BASE';
   const isEthereumChain = chainType === 'ETHEREUM';
   const isBscChain = chainType === 'BSC';
-  const isTradingEnabled = chainType === 'BASE' || chainType === 'ETHEREUM' || chainType === 'BSC' || chainType === 'MOVEMENT';
+  const isTradingEnabled = chainType === 'BASE' || chainType === 'ETHEREUM' || chainType === 'BSC' || chainType === 'MOVEMENT' || chainType === 'SOLANA';
 
   // Function to ensure complete data with consistent fallbacks
   const ensureCompleteData = (original: PublicListing): Partial<PublicListing> => {
@@ -511,7 +511,49 @@ export const ListingDetail: React.FC = () => {
 
       let walletAddress: string | undefined;
 
-      if (chain === 'base' || chain === 'ethereum' || chain === 'bsc') {
+      if (chain === 'solana') {
+        // Step 2: Get wallet address (Solana)
+        try {
+          walletAddress = await getWalletAddressForChain('SOLANA', user, wallets);
+        } catch (walletError: any) {
+          toast.error(walletError?.message || 'Solana wallet not found. Please connect a Solana wallet in Privy.');
+          return;
+        }
+
+        // Step 3: Build swap transaction (Solana via Jupiter)
+        toast.loading('Building swap transaction...', { id: 'build' });
+        const buildResponse = await axios.post(
+          `${backendUrl}/api/v1/trades/build-transaction`,
+          {
+            chain,
+            quote,
+            walletAddress,
+          },
+          { timeout: 20000 }
+        );
+
+        const buildPayload = buildResponse.data;
+        const transactionData = buildPayload?.data ?? buildPayload;
+        if (!transactionData?.transaction) {
+          toast.error('Failed to build Solana swap transaction', { id: 'build' });
+          return;
+        }
+        toast.success('Transaction ready', { id: 'build' });
+
+        // Step 4: Execute trade (Solana)
+        toast.loading('Executing trade...', { id: 'execute' });
+        const result = await executeTrade('SOLANA', user, {
+          quote,
+          transaction: transactionData.transaction,
+        });
+
+        if (result.success && result.transactionHash) {
+          toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
+          listingService.getTokenTrades(contractAddress, 50, tradeChain ?? undefined).then(setTrades).catch(console.error);
+        } else {
+          toast.error(result.error || 'Trade execution failed', { id: 'execute' });
+        }
+      } else if (chain === 'base' || chain === 'ethereum' || chain === 'bsc') {
         // Step 2: Get wallet address (Base only)
         try {
           walletAddress = await getWalletAddressForChain(

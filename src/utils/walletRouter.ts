@@ -369,10 +369,13 @@ export function useWalletRouter() {
     }
   ): Promise<WalletRouterResult> => {
     if (chain === 'SOLANA') {
-      return {
-        success: false,
-        error: 'Solana trading is disabled. This chain is read-only for now.',
-      };
+      if (!params.transaction || typeof params.transaction !== 'string') {
+        return {
+          success: false,
+          error: 'Missing Solana transaction data. Please rebuild the swap transaction.',
+        };
+      }
+      return executeSolanaTrade(params.transaction, params.quote);
     }
     if (chain === 'BASE' || chain === 'ETHEREUM' || chain === 'BSC') {
       if (!params.transaction || typeof params.transaction !== 'object') {

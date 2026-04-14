@@ -7,13 +7,14 @@ import userListingsService from '../../services/userListingsService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import { ListingPayment } from '../Payment/ListingPayment';
 import { MovementWalletActivity } from './MovementWalletActivity';
+import { SolanaWalletActivity } from './SolanaWalletActivity';
 import toast from 'react-hot-toast';
 
 export const MyUserListings: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showPayment, setShowPayment] = useState<{listingId: string; title: string} | null>(null);
+  const [showPayment, setShowPayment] = useState<{listingId: string; title: string; chain?: string} | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
@@ -71,7 +72,8 @@ export const MyUserListings: React.FC = () => {
       </div>
       {error && <div className="bg-red-50 text-red-700 border border-red-200 rounded p-3 mb-4 text-sm">{error}</div>}
       
-      {/* PROFESSIONAL ADDITION: Movement Wallet Activity & Balance */}
+      {/* Wallet Activity & Balance */}
+      <SolanaWalletActivity />
       <MovementWalletActivity />
 
       {loading ? (
@@ -172,7 +174,7 @@ export const MyUserListings: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.preventDefault();
-                        setShowPayment({listingId: it.id, title: it.title});
+                        setShowPayment({listingId: it.id, title: it.title, chain: it.chain});
                       }}
                       className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all"
                     >
@@ -232,6 +234,7 @@ export const MyUserListings: React.FC = () => {
         <ListingPayment
           listingId={showPayment.listingId}
           listingTitle={showPayment.title}
+          chain={showPayment.chain}
           onPaymentComplete={() => {
             setShowPayment(null);
             load(); // Refresh listings

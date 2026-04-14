@@ -19,6 +19,7 @@ export const PrivyLoginPage: React.FC = () => {
   const { createWallet } = useCreateWallet();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
+  const [isCreatingSolanaWallet, setIsCreatingSolanaWallet] = useState(false);
   const [syncProgress, setSyncProgress] = useState('');
   const [initTimedOut, setInitTimedOut] = useState(false);
 
@@ -46,7 +47,7 @@ export const PrivyLoginPage: React.FC = () => {
   // Sync with backend after Privy authentication
   useEffect(() => {
     // Match main frontend EXACTLY: same guards
-    if (!authenticated || !user || isSyncing || isCreatingMovementWallet) {
+    if (!authenticated || !user || isSyncing || isCreatingMovementWallet || isCreatingSolanaWallet) {
       return;
     }
 
@@ -156,7 +157,29 @@ export const PrivyLoginPage: React.FC = () => {
         console.log('✅ Movement wallet already exists, skipping creation');
       }
 
-      // Step 5: Navigation
+      // Step 5: Ensure Solana wallet exists (for Solana payments)
+      const hasSolWallet = syncResult.wallets?.some(
+        (w: any) => w.blockchain === 'SOLANA' || w.chainType === 'solana'
+      ) || userRef.current?.linkedAccounts?.some(
+        (a: any) => a.chainType === 'solana' || a.walletClientType === 'solana'
+      );
+
+      if (!hasSolWallet) {
+        setSyncProgress('Creating Solana wallet...');
+        setIsCreatingSolanaWallet(true);
+        try {
+          await createWallet({ chainType: 'solana' as any });
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          await syncWithBackend();
+        } catch (solError: any) {
+          console.warn('Solana wallet setup failed:', solError);
+          await syncWithBackend();
+        } finally {
+          setIsCreatingSolanaWallet(false);
+        }
+      }
+
+      // Step 6: Navigation
       setSyncProgress('Redirecting to dashboard...');
       console.log('✅ Authentication flow complete, navigating...');
       
@@ -350,13 +373,13 @@ export const PrivyLoginPage: React.FC = () => {
     );
   }
 
-  if (isSyncing || isCreatingMovementWallet) {
+  if (isSyncing || isCreatingMovementWallet || isCreatingSolanaWallet) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center p-8 max-w-md w-full bg-white rounded-2xl shadow-xl">
           <div className="animate-spin rounded-full h-24 w-24 border-b-2 border-purple-600 mx-auto mb-6"></div>
           <p className="text-2xl font-bold text-gray-900 mb-2">
-            {isCreatingMovementWallet ? 'Creating Wallet...' : 'Syncing Profile...'}
+            {isCreatingMovementWallet ? 'Creating Movement Wallet...' : isCreatingSolanaWallet ? 'Creating Solana Wallet...' : 'Syncing Profile...'}
           </p>
           <p className="text-gray-600 mb-4">
             {isCreatingMovementWallet 
@@ -453,3 +476,6 @@ export const PrivyLoginPage: React.FC = () => {
     </div>
   );
 };
+
+
+
