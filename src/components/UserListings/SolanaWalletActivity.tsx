@@ -236,9 +236,20 @@ export const SolanaWalletActivity: React.FC<SolanaWalletActivityProps> = ({
 
   const hydrateRecentTransactions = async (walletId: string) => {
     try {
-      await solanaWalletService.pollTransactions(walletId, 15, solanaAddress);
-      const txs = await solanaWalletService.getTransactions(walletId, 20);
-      emitHydratedTransactions(txs);
+      // Phase 1: load persisted DB history immediately (fast UI on login/reload)
+      const cached = await solanaWalletService.getTransactions(walletId, 20);
+      emitHydratedTransactions(cached);
+
+      // Phase 2: poll chain in background, then refresh DB history
+      void (async () => {
+        try {
+          await solanaWalletService.pollTransactions(walletId, 15, solanaAddress);
+          const refreshed = await solanaWalletService.getTransactions(walletId, 20);
+          emitHydratedTransactions(refreshed);
+        } catch (pollErr: any) {
+          setDebugInfo((prev) => `${prev} | tx_poll_warn=${pollErr?.message || 'unknown'}`);
+        }
+      })();
     } catch (e: any) {
       setDebugInfo((prev) => `${prev} | tx_hydrate_err=${e?.message || 'unknown'}`);
     }
