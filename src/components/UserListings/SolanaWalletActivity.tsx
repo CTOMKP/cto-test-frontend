@@ -212,8 +212,8 @@ export const SolanaWalletActivity: React.FC<SolanaWalletActivityProps> = ({
   const refreshBalances = async (address: string) => {
     try {
       const data = await solanaWalletService.getBalance(address);
-      const sol = typeof data?.sol === 'number' ? data.sol : 0;
-      const usdc = typeof data?.usdc === 'number' ? data.usdc : 0;
+      const sol = Number(data?.sol ?? 0);
+      const usdc = Number(data?.usdc ?? 0);
       setSolBalance(sol);
       setUsdcBalance(usdc);
       try {
