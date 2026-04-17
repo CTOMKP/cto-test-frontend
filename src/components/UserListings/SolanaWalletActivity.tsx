@@ -236,7 +236,7 @@ export const SolanaWalletActivity: React.FC<SolanaWalletActivityProps> = ({
 
   const hydrateRecentTransactions = async (walletId: string) => {
     try {
-      await solanaWalletService.pollTransactions(walletId, 15);
+      await solanaWalletService.pollTransactions(walletId, 15, solanaAddress);
       const txs = await solanaWalletService.getTransactions(walletId, 20);
       emitHydratedTransactions(txs);
     } catch (e: any) {

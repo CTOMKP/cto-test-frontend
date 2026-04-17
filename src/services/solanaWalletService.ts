@@ -24,10 +24,14 @@ export const solanaWalletService = {
     return res.data?.data?.transactions || res.data?.transactions || [];
   },
 
-  async pollTransactions(walletId: string, limit: number = 15): Promise<WalletTransaction[]> {
+  async pollTransactions(
+    walletId: string,
+    limit: number = 15,
+    address?: string,
+  ): Promise<WalletTransaction[]> {
     const res = await axios.post(
       `${backendUrl}/api/v1/wallet/solana/poll/${walletId}`,
-      { limit },
+      { limit, address },
       { headers: getAuthHeaders() },
     );
     return res.data?.data?.transactions || res.data?.transactions || [];
