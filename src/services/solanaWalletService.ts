@@ -51,6 +51,28 @@ export const solanaWalletService = {
     );
     return res.data?.data?.transactions || res.data?.transactions || [];
   },
+
+  async recordTransaction(params: {
+    walletId: string;
+    txHash: string;
+    asset: 'SOL' | 'USDC';
+    amount: string;
+    address?: string;
+    toAddress?: string;
+  }) {
+    const res = await axios.post(
+      `${backendUrl}/api/v1/wallet/solana/record/${params.walletId}`,
+      {
+        txHash: params.txHash,
+        asset: params.asset,
+        amount: params.amount,
+        address: params.address,
+        toAddress: params.toAddress,
+      },
+      { headers: getAuthHeaders() },
+    );
+    return res.data?.data?.transaction || res.data?.transaction || null;
+  },
 };
 
 export default solanaWalletService;

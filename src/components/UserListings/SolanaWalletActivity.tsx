@@ -487,6 +487,20 @@ export const SolanaWalletActivity: React.FC<SolanaWalletActivityProps> = ({
 
       toast.success(`${asset} transfer successful!`, { id: toastId });
       console.log('[SolanaSend] success');
+      if (solanaWalletId) {
+        try {
+          await solanaWalletService.recordTransaction({
+            walletId: solanaWalletId,
+            txHash,
+            asset,
+            amount: asset === 'SOL' ? String(solLamports) : usdcAmountRaw.toString(),
+            address: cleanSender,
+            toAddress: cleanRecipient,
+          });
+        } catch (persistErr) {
+          console.warn('[SolanaSend] backend persistence failed', persistErr);
+        }
+      }
       onTransactionRecorded?.({
         id: `solana-${txHash}`,
         walletId: cleanSender,
