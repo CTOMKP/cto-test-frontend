@@ -112,6 +112,15 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
         throw new Error('Only Solana swaps are supported in this UI right now.');
       }
 
+      const rpcUrl = (process.env.REACT_APP_SOLANA_RPC_URL || '').toLowerCase();
+      const isNonMainnetRpc =
+        rpcUrl.includes('devnet') || rpcUrl.includes('testnet') || rpcUrl.includes('localhost');
+      if (isNonMainnetRpc) {
+        throw new Error(
+          'Swap is disabled on devnet/testnet in this app. Use mainnet RPC + mainnet token mints for Jupiter swap.'
+        );
+      }
+
       const fromMeta = tokenMap.SOLANA[fromToken];
       const toMeta = tokenMap.SOLANA[toToken];
       if (!fromMeta || !toMeta) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import axios from 'axios';
@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { MovementWalletActivity, MovementWalletRecentActivity } from '../UserListings/MovementWalletActivity';
 import { SolanaWalletActivity } from '../UserListings/SolanaWalletActivity';
+import { WalletTransaction } from '../../services/movementWalletService';
 import userListingsService from '../../services/userListingsService';
 import marketplaceService from '../../services/marketplaceService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
@@ -14,6 +15,7 @@ import MessagesBell from '../Messages/MessagesBell';
 import xpService from '../../services/xpService';
 import RewardProgressCard from './RewardProgressCard';
 import { RewardProgress } from '../../types/auth.types';
+import supportTicketService, { SupportTicket } from '../../services/supportTicketService';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,6 +36,14 @@ export const PrivyProfilePage: React.FC = () => {
     loading: true,
     syncing: false,
   });
+  const [solanaTransactions, setSolanaTransactions] = useState<WalletTransaction[]>(() => {
+    try {
+      const raw = localStorage.getItem('cto_solana_recent_txs');
+      return raw ? (JSON.parse(raw) as WalletTransaction[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [rewards, setRewards] = useState<Partial<RewardProgress>>({});
   const [avatarUrl, setAvatarUrl] = useState<string>(() => {
     // Check both localStorage keys (pfpService saves to cto_user_avatar_url)
@@ -46,6 +56,13 @@ export const PrivyProfilePage: React.FC = () => {
     return stored || '';
   });
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
+  const [ticketSubject, setTicketSubject] = useState('');
+  const [ticketMessage, setTicketMessage] = useState('');
+  const [ticketCategory, setTicketCategory] = useState<'GENERAL' | 'SWAP' | 'WALLET' | 'PAYMENT' | 'LISTING' | 'ADS' | 'ACCOUNT' | 'OTHER'>('GENERAL');
+  const [ticketPriority, setTicketPriority] = useState<'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'>('NORMAL');
+  const [ticketSubmitting, setTicketSubmitting] = useState(false);
+  const [ticketLoading, setTicketLoading] = useState(false);
+  const [myTickets, setMyTickets] = useState<SupportTicket[]>([]);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
 
@@ -57,6 +74,7 @@ export const PrivyProfilePage: React.FC = () => {
       loadAvatarFromBackend();
       loadMyListings();
       loadMyAds();
+      loadSupportTickets();
     }
   }, [authenticated, user]);
 
@@ -81,6 +99,51 @@ export const PrivyProfilePage: React.FC = () => {
     const nextDisplayName = (localStorage.getItem('cto_user_name') || fallback).trim();
     setDisplayName(nextDisplayName);
   }, [user?.email?.address, user?.wallet?.address]);
+
+  const loadSupportTickets = async () => {
+    try {
+      setTicketLoading(true);
+      const tickets = await supportTicketService.getMine(5);
+      setMyTickets(Array.isArray(tickets) ? tickets : []);
+    } catch {
+      // best effort
+    } finally {
+      setTicketLoading(false);
+    }
+  };
+
+  const handleSubmitTicket = async () => {
+    const subject = ticketSubject.trim();
+    const message = ticketMessage.trim();
+    if (subject.length < 3) {
+      toast.error('Ticket subject must be at least 3 characters');
+      return;
+    }
+    if (message.length < 10) {
+      toast.error('Ticket message must be at least 10 characters');
+      return;
+    }
+
+    try {
+      setTicketSubmitting(true);
+      await supportTicketService.submit({
+        subject,
+        message,
+        category: ticketCategory,
+        priority: ticketPriority,
+      });
+      toast.success('Support ticket submitted');
+      setTicketSubject('');
+      setTicketMessage('');
+      setTicketCategory('GENERAL');
+      setTicketPriority('NORMAL');
+      await loadSupportTickets();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to submit support ticket');
+    } finally {
+      setTicketSubmitting(false);
+    }
+  };
 
   // Load avatar from backend
   const loadAvatarFromBackend = async () => {
@@ -400,6 +463,68 @@ export const PrivyProfilePage: React.FC = () => {
     return compact === '--' ? '--' : `$${compact}`;
   };
 
+  const areWalletTransactionsEqual = (a: WalletTransaction[], b: WalletTransaction[]) => {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      const left = a[i];
+      const right = b[i];
+      if (
+        left.txHash !== right.txHash ||
+        left.txType !== right.txType ||
+        left.amount !== right.amount ||
+        left.tokenSymbol !== right.tokenSymbol ||
+        left.createdAt !== right.createdAt
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleSolanaTransactionRecorded = useCallback((tx: WalletTransaction) => {
+    setSolanaTransactions((prev) => {
+      const existing = prev.find((item) => item.txHash === tx.txHash);
+      if (existing) return prev;
+      return [tx, ...prev].slice(0, 20);
+    });
+  }, []);
+
+  const handleSolanaTransactionsHydrated = useCallback((txs: WalletTransaction[]) => {
+    setSolanaTransactions((prev) => {
+      const merged = [...txs, ...prev]
+        .filter((tx, index, arr) => arr.findIndex((it) => it.txHash === tx.txHash) === index)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 20);
+      return areWalletTransactionsEqual(prev, merged) ? prev : merged;
+    });
+  }, []);
+
+  const handleActivityUpdate = useCallback((next: {
+    transactions: WalletTransaction[];
+    loading: boolean;
+    syncing: boolean;
+  }) => {
+    setActivityState((prev) => {
+      const transactionsChanged = !areWalletTransactionsEqual(
+        prev.transactions as WalletTransaction[],
+        next.transactions
+      );
+      if (!transactionsChanged && prev.loading === next.loading && prev.syncing === next.syncing) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cto_solana_recent_txs', JSON.stringify(solanaTransactions));
+    } catch {
+      // ignore localStorage write failures
+    }
+  }, [solanaTransactions]);
+
   const toCloudFrontUrl = (url?: string | null) => {
     if (!url || typeof url !== 'string') return undefined;
     if (url.includes('cloudfront.net')) return url;
@@ -521,8 +646,14 @@ export const PrivyProfilePage: React.FC = () => {
         </div>
 
         {/* Wallet Dashboards */}
-        <SolanaWalletActivity />
-        <MovementWalletActivity onActivityUpdate={setActivityState} />
+        <SolanaWalletActivity
+          onTransactionRecorded={handleSolanaTransactionRecorded}
+          onTransactionsHydrated={handleSolanaTransactionsHydrated}
+        />
+        <MovementWalletActivity
+          extraTransactions={solanaTransactions}
+          onActivityUpdate={handleActivityUpdate}
+        />
 
         <RewardProgressCard rewards={rewards} className="mb-6" />
 
@@ -773,6 +904,84 @@ export const PrivyProfilePage: React.FC = () => {
             >
               🎴 Get PFP
             </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Submit Ticket</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <input
+              type="text"
+              value={ticketSubject}
+              onChange={(e) => setTicketSubject(e.target.value)}
+              placeholder="Subject"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={ticketCategory}
+                onChange={(e) => setTicketCategory(e.target.value as any)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="GENERAL">General</option>
+                <option value="SWAP">Swap</option>
+                <option value="WALLET">Wallet</option>
+                <option value="PAYMENT">Payment</option>
+                <option value="LISTING">Listing</option>
+                <option value="ADS">Ads</option>
+                <option value="ACCOUNT">Account</option>
+                <option value="OTHER">Other</option>
+              </select>
+              <select
+                value={ticketPriority}
+                onChange={(e) => setTicketPriority(e.target.value as any)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="LOW">Low</option>
+                <option value="NORMAL">Normal</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <textarea
+            value={ticketMessage}
+            onChange={(e) => setTicketMessage(e.target.value)}
+            placeholder="Describe your issue clearly (minimum 10 characters)"
+            className="w-full min-h-[110px] border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
+          />
+          <button
+            onClick={handleSubmitTicket}
+            disabled={ticketSubmitting}
+            className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {ticketSubmitting ? 'Submitting...' : 'Submit Ticket'}
+          </button>
+
+          <div className="mt-5">
+            <h3 className="font-semibold text-gray-900 mb-2">My Recent Tickets</h3>
+            {ticketLoading ? (
+              <p className="text-sm text-gray-500">Loading tickets...</p>
+            ) : myTickets.length === 0 ? (
+              <p className="text-sm text-gray-500">No tickets yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {myTickets.map((ticket) => (
+                  <div key={ticket.id} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
+                      <span className="font-semibold text-gray-800">{ticket.subject}</span>
+                      <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700">{ticket.status}</span>
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700">{ticket.category}</span>
+                      <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700">{ticket.priority}</span>
+                    </div>
+                    <p className="text-sm text-gray-600 line-clamp-2">{ticket.message}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {new Date(ticket.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
