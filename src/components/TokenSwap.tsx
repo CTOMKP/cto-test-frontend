@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+ï»¿import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWalletRouter } from '../utils/walletRouter';
@@ -7,9 +7,14 @@ interface TokenSwapProps {
   onClose?: () => void;
 }
 
+type TokenMeta = {
+  mint: string;
+  decimals: number;
+};
+
 const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
   const [fromToken, setFromToken] = useState('USDC');
-  const [toToken, setToToken] = useState('BONK');
+  const [toToken, setToToken] = useState('SOL');
   const [amount, setAmount] = useState('');
   const [chain, setChain] = useState('SOLANA');
   const [isLoading, setIsLoading] = useState(false);
@@ -18,23 +23,43 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
   const { getSolanaWallet, executeTrade } = useWalletRouter();
 
   const tokenMap = useMemo(() => {
-    return {
-      SOLANA: {
-        USDC: {
-          mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-          decimals: 6,
-        },
-        SOL: {
-          mint: 'So11111111111111111111111111111111111111112',
-          decimals: 9,
-        },
-        BONK: {
-          mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
-          decimals: 5,
-        },
-      },
-    } as const;
+    const rpc = process.env.REACT_APP_SOLANA_RPC_URL || '';
+    const isDevnet = rpc.includes('devnet');
+
+    const defaultUsdcMint = isDevnet
+      ? '6e5qtpMzrLzDM8R6fHQtoF6d2iybHBYdj56tceKZo9sn'
+      : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+    const usdcMint = process.env.REACT_APP_SOLANA_USDC_MINT || defaultUsdcMint;
+    const bonkMint =
+      process.env.REACT_APP_SOLANA_BONK_MINT ||
+      (!isDevnet ? 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263' : '');
+
+    const solanaTokens: Record<string, TokenMeta> = {
+      USDC: { mint: usdcMint, decimals: 6 },
+      SOL: { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
+    };
+
+    if (bonkMint) {
+      solanaTokens.BONK = { mint: bonkMint, decimals: 5 };
+    }
+
+    return { SOLANA: solanaTokens };
   }, []);
+
+  const availableTokens = useMemo(() => Object.keys(tokenMap.SOLANA), [tokenMap]);
+
+  useEffect(() => {
+    if (!availableTokens.includes(fromToken)) {
+      setFromToken(availableTokens[0] || 'USDC');
+      return;
+    }
+
+    if (!availableTokens.includes(toToken) || toToken === fromToken) {
+      const fallback = availableTokens.find((token) => token !== fromToken) || availableTokens[0] || 'SOL';
+      setToToken(fallback);
+    }
+  }, [availableTokens, fromToken, toToken]);
 
   const handleSwap = async () => {
     if (!amount || parseFloat(amount) <= 0) {
@@ -48,10 +73,7 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
     try {
       const token = localStorage.getItem('cto_auth_token');
       if (!token) {
-        setResult({
-          success: false,
-          error: 'Please login first to use token swap',
-        });
+        setResult({ success: false, error: 'Please login first to use token swap' });
         setIsLoading(false);
         return;
       }
@@ -62,10 +84,13 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
         throw new Error('Only Solana swaps are supported in this UI right now.');
       }
 
-      const fromMeta = tokenMap.SOLANA[fromToken as keyof typeof tokenMap.SOLANA];
-      const toMeta = tokenMap.SOLANA[toToken as keyof typeof tokenMap.SOLANA];
+      const fromMeta = tokenMap.SOLANA[fromToken];
+      const toMeta = tokenMap.SOLANA[toToken];
       if (!fromMeta || !toMeta) {
         throw new Error('Unsupported token selection');
+      }
+      if (fromToken === toToken) {
+        throw new Error('From and To token cannot be the same');
       }
 
       const amountRaw = Math.floor(parseFloat(amount) * Math.pow(10, fromMeta.decimals));
@@ -154,10 +179,10 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
   return (
     <div className="token-swap-container">
       <div className="swap-header">
-        <h2>?? Token Swap</h2>
+        <h2>Token Swap</h2>
         {onClose && (
           <button onClick={onClose} className="close-button">
-            ×
+            x
           </button>
         )}
       </div>
@@ -171,9 +196,9 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
             style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
             aria-label="Select from token"
           >
-            <option value="USDC">USDC</option>
-            <option value="SOL">SOL</option>
-            <option value="BONK">BONK</option>
+            {availableTokens.map((token) => (
+              <option key={token} value={token}>{token}</option>
+            ))}
           </select>
         </div>
 
@@ -185,9 +210,9 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
             style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
             aria-label="Select to token"
           >
-            <option value="BONK">BONK</option>
-            <option value="SOL">SOL</option>
-            <option value="USDC">USDC</option>
+            {availableTokens.map((token) => (
+              <option key={token} value={token}>{token}</option>
+            ))}
           </select>
         </div>
 
@@ -228,7 +253,7 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
             width: '100%'
           }}
         >
-          {isLoading ? 'Swapping...' : '?? Swap Tokens'}
+          {isLoading ? 'Swapping...' : 'Swap Tokens'}
         </button>
 
         {result && (
@@ -241,7 +266,7 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
             border: `1px solid ${result.success ? '#c3e6cb' : '#f5c6cb'}`
           }}>
             <h4 style={{ color: result.success ? '#155724' : '#721c24' }}>
-              {result.success ? '? Swap Submitted!' : '? Swap Failed'}
+              {result.success ? 'Swap Submitted' : 'Swap Failed'}
             </h4>
             {result.success ? (
               <div>
@@ -249,49 +274,12 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
                 {result.data.txHash && (
                   <p><strong>Tx Hash:</strong> {result.data.txHash}</p>
                 )}
-                {result.data.quote && (
-                  <details style={{ marginTop: '0.5rem' }}>
-                    <summary style={{ cursor: 'pointer', color: '#666' }}>View Quote Details</summary>
-                    <pre style={{
-                      fontSize: '0.8rem',
-                      backgroundColor: '#f5f5f5',
-                      padding: '0.5rem',
-                      marginTop: '0.5rem',
-                      borderRadius: '4px',
-                      overflow: 'auto',
-                      maxHeight: '200px'
-                    }}>
-                      {JSON.stringify(result.data.quote, null, 2)}
-                    </pre>
-                  </details>
-                )}
               </div>
             ) : (
               <p><strong>Error:</strong> {result.error}</p>
             )}
           </div>
         )}
-
-        <div style={{
-          backgroundColor: '#f5f5f5',
-          padding: '1rem',
-          borderRadius: '8px',
-          marginTop: '1rem',
-          textAlign: 'left'
-        }}>
-          <h4>How it works:</h4>
-          <ol style={{ paddingLeft: '1.5rem' }}>
-            <li>Select tokens and enter amount</li>
-            <li>Choose the blockchain network</li>
-            <li>Click "Swap Tokens" to get quote</li>
-            <li>Jupiter finds the best route (includes Meteora)</li>
-            <li>Transaction is signed by your Privy Solana wallet</li>
-            <li>Tokens are swapped automatically</li>
-          </ol>
-          <p style={{ marginTop: '1rem', color: '#666', fontSize: '0.9rem' }}>
-            <strong>Note:</strong> This swap uses Jupiter on Solana. Make sure you have a Solana wallet in Privy and a small amount of SOL for gas.
-          </p>
-        </div>
       </div>
     </div>
   );
