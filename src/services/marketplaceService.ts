@@ -29,8 +29,9 @@ export const marketplaceService = {
     return res.data?.data || res.data;
   },
 
-  async createPayment(adId: string) {
-    const res = await axios.post(`${backendUrl}/api/v1/marketplace/ads/${adId}/pay`, {}, {
+  async createPayment(adId: string, paymentChain?: 'MOVEMENT' | 'SOLANA') {
+    const payload = paymentChain ? { paymentChain } : {};
+    const res = await axios.post(`${backendUrl}/api/v1/marketplace/ads/${adId}/pay`, payload, {
       headers: authHeaders(),
     });
     return res.data?.data || res.data;

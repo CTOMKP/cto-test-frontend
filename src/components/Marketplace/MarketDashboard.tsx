@@ -6,6 +6,7 @@ import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
 import solanaPaymentService from '../../services/solanaPaymentService';
 import solanaWalletService from '../../services/solanaWalletService';
+import { privyService } from '../../services/privyService';
 import { usePrivyAuth } from '../../services/privyAuthService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
 import { useWallets } from '@privy-io/react-auth';
@@ -89,7 +90,7 @@ const DEFAULT_DRAFT: AdDraft = {
   blockchainFocus: 'Solana',
   roleType: 'Designer',
   toolsStack: 'Adobe Illustrator',
-  paymentType: 'USDC',
+  paymentType: 'USDC.e',
   amount: '',
   deadline: '',
   noDeadline: false,
@@ -114,7 +115,10 @@ const DEFAULT_PRICING: PricingRow[] = [
 
 const ROLE_OPTIONS = ['Designer', 'Developer', 'Community Lead', 'CTO', 'Project Manager'];
 const TOOL_OPTIONS = ['Adobe Illustrator', 'Figma', 'Photoshop', 'Premiere Pro', 'Notion'];
-const PAYMENT_TYPES = ['USDC'];
+const PAYMENT_TYPES = [
+  { value: 'USDC.e', label: 'USDC.e (Movement)', chain: 'MOVEMENT' as const },
+  { value: 'USDC', label: 'USDC (Solana)', chain: 'SOLANA' as const },
+];
 const BLOCKCHAIN_OPTIONS = ['Solana', 'Base', 'Ethereum', 'Movement', 'Polygon'];
 const isFeatured = (ad: { featuredPlacement?: boolean; featuredUntil?: string }) => {
   if (ad?.featuredPlacement) return true;
@@ -264,14 +268,38 @@ export default function MarketDashboard() {
 
   useEffect(() => {
     const loadWallet = async () => {
-      const walletId = localStorage.getItem('cto_wallet_id');
-      if (!walletId) return;
       try {
+        let walletId = localStorage.getItem('cto_wallet_id');
+        try {
+          const walletResult = await privyService.getUserWallets();
+          const userWallets = walletResult?.data?.wallets || walletResult?.wallets || [];
+          const movementWallet = userWallets.find(
+            (w: any) =>
+              w?.blockchain?.toUpperCase() === 'MOVEMENT' ||
+              w?.blockchain?.toUpperCase() === 'APTOS'
+          );
+          if (movementWallet?.id) {
+            walletId = movementWallet.id;
+            localStorage.setItem('cto_wallet_id', movementWallet.id);
+          }
+          if (movementWallet?.address) {
+            setWalletAddress(movementWallet.address);
+          }
+        } catch {
+          // fallback to cached wallet id
+        }
+
+        if (!walletId) return;
         const balances = await movementWalletService.getBalance(walletId);
-        const usdc = balances.find((b) => b.tokenSymbol?.toUpperCase().includes('USDC')) || balances[0];
+        const usdc =
+          balances.find((b) => b.tokenSymbol?.toUpperCase() === 'USDC.E') ||
+          balances.find((b) => b.tokenSymbol?.toUpperCase().includes('USDC')) ||
+          balances[0];
         if (usdc) {
           const decimals = typeof usdc.decimals === 'number' ? usdc.decimals : 6;
-          const numericBalance = parseFloat(usdc.balance || '0') / Math.pow(10, decimals);
+          const rawBalance = parseFloat(usdc.balance || '0');
+          const numericBalance =
+            rawBalance > 10000 ? rawBalance / Math.pow(10, decimals) : rawBalance;
           setWalletBalance(Number.isFinite(numericBalance) ? numericBalance : 0);
         }
       } catch (error) {
@@ -388,7 +416,11 @@ export default function MarketDashboard() {
     multiChainPrice +
     imageAddonPrice;
 
-  const isSolanaPayment = (draft.blockchainFocus || '').toUpperCase() === 'SOLANA';
+  const selectedPaymentMethod =
+    PAYMENT_TYPES.find((method) => method.value === draft.paymentType) || PAYMENT_TYPES[0];
+  const isSolanaPayment = selectedPaymentMethod.chain === 'SOLANA';
+  const paymentChain = selectedPaymentMethod.chain;
+  const paymentTokenLabel = selectedPaymentMethod.value;
   const effectiveBalance = isSolanaPayment ? solanaBalance : walletBalance;
   const lowBalance = effectiveBalance < estimatedTotal;
 
@@ -543,7 +575,7 @@ export default function MarketDashboard() {
         return;
       }
 
-      const paymentResponse = await marketplaceService.createPayment(nextId);
+      const paymentResponse = await marketplaceService.createPayment(nextId, paymentChain);
       const resolvedPaymentId =
         paymentResponse?.paymentId || paymentResponse?.payment?.paymentId || paymentResponse?.payment?.id;
       if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
@@ -953,8 +985,8 @@ export default function MarketDashboard() {
                     onChange={(event) => updateDraft({ paymentType: event.target.value })}
                   >
                     {PAYMENT_TYPES.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
                       </option>
                     ))}
                   </select>
@@ -1236,7 +1268,7 @@ export default function MarketDashboard() {
                 <div className="mt-3">
                   <label className="flex items-center gap-2 text-zinc-300">
                     <input type="radio" name="payment-method" defaultChecked />
-                    Fund with USDC
+                    Fund with {paymentTokenLabel}
                   </label>
                 </div>
               </div>
@@ -1244,7 +1276,9 @@ export default function MarketDashboard() {
               <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm">
                 <div className="flex items-center justify-between">
                   <span>Your Wallet Balance:</span>
-                  <span className={lowBalance ? 'text-red-400' : 'text-emerald-400'}>${effectiveBalance.toFixed(2)} USDC</span>
+                  <span className={lowBalance ? 'text-red-400' : 'text-emerald-400'}>
+                    ${effectiveBalance.toFixed(2)} {paymentTokenLabel}
+                  </span>
                   <button className="text-amber-400">Fund Wallet</button>
                 </div>
                 {lowBalance ? (
@@ -1262,7 +1296,7 @@ export default function MarketDashboard() {
               </div>
 
               <p className="text-xs text-amber-400">
-                *This app uses USDC as the primary transaction token. Please ensure your {isSolanaPayment ? 'Solana' : 'Movement'} wallet is funded
+                *This app uses {paymentTokenLabel} as the payment token. Please ensure your {isSolanaPayment ? 'Solana' : 'Movement'} wallet is funded
                 and you have a tiny amount of {isSolanaPayment ? 'SOL' : 'MOVE'} for gas.
               </p>
 
