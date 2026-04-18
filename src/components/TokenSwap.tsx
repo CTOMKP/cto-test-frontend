@@ -12,6 +12,14 @@ type TokenMeta = {
   decimals: number;
 };
 
+const unwrapApiData = (payload: any): any => {
+  let data = payload?.data ?? payload;
+  if (data?.data && !data?.inputMint && !data?.transaction) {
+    data = data.data;
+  }
+  return data;
+};
+
 const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
   const [fromToken, setFromToken] = useState('USDC');
   const [toToken, setToToken] = useState('SOL');
@@ -123,7 +131,16 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
         }
       );
 
-      const quote = quoteRes.data?.data || quoteRes.data;
+      const quotePayload = quoteRes.data;
+      if (quotePayload?.success === false || quotePayload?.code) {
+        throw new Error(quotePayload?.message || 'Failed to get quote');
+      }
+
+      const quote = unwrapApiData(quotePayload);
+      if (!quote?.inputMint || !quote?.outputMint || !quote?.inAmount || !quote?.rawQuote) {
+        console.error('Invalid swap quote payload:', quotePayload);
+        throw new Error('Invalid quote response from backend');
+      }
 
       const buildRes = await axios.post(
         `${backendUrl}/api/v1/trades/build-transaction`,
@@ -142,7 +159,12 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
         }
       );
 
-      const buildData = buildRes.data?.data || buildRes.data;
+      const buildPayload = buildRes.data;
+      if (buildPayload?.success === false || buildPayload?.code) {
+        throw new Error(buildPayload?.message || 'Failed to build swap transaction');
+      }
+
+      const buildData = unwrapApiData(buildPayload);
       const unsignedTx = buildData?.transaction;
       if (!unsignedTx) {
         throw new Error('Failed to build swap transaction');
@@ -167,9 +189,14 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
       });
     } catch (error: any) {
       console.error('Swap failed:', error);
+      console.error('Swap failed response payload:', error?.response?.data);
       setResult({
         success: false,
-        error: error.response?.data?.message || error.message,
+        error:
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          'Swap failed',
       });
     } finally {
       setIsLoading(false);
