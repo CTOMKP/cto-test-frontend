@@ -13,11 +13,31 @@ type TokenMeta = {
 };
 
 const unwrapApiData = (payload: any): any => {
-  let data = payload?.data ?? payload;
-  if (data?.data && !data?.inputMint && !data?.transaction) {
-    data = data.data;
+  let current = payload;
+  for (let i = 0; i < 6; i += 1) {
+    if (!current || typeof current !== 'object') break;
+
+    if (current.success === true && current.data !== undefined) {
+      current = current.data;
+      continue;
+    }
+
+    const looksLikeEnvelope =
+      current.data !== undefined &&
+      (current.statusCode !== undefined ||
+        current.timestamp !== undefined ||
+        current.message !== undefined ||
+        current.success !== undefined ||
+        (!current.inputMint && !current.rawQuote && !current.transaction));
+
+    if (looksLikeEnvelope) {
+      current = current.data;
+      continue;
+    }
+
+    break;
   }
-  return data;
+  return current;
 };
 
 const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
@@ -137,7 +157,14 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
       }
 
       const quote = unwrapApiData(quotePayload);
-      if (!quote?.inputMint || !quote?.outputMint || !quote?.inAmount || !quote?.rawQuote) {
+      const normalizedQuote =
+        quote?.rawQuote
+          ? quote
+          : quote?.inputMint && quote?.outputMint && quote?.inAmount
+            ? { ...quote, rawQuote: quote }
+            : null;
+
+      if (!normalizedQuote?.inputMint || !normalizedQuote?.outputMint || !normalizedQuote?.inAmount || !normalizedQuote?.rawQuote) {
         console.error('Invalid swap quote payload:', quotePayload);
         throw new Error('Invalid quote response from backend');
       }
@@ -146,7 +173,7 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
         `${backendUrl}/api/v1/trades/build-transaction`,
         {
           chain: 'solana',
-          quote,
+          quote: normalizedQuote,
           walletAddress: solWalletAddress,
           slippageBps: 50,
         },
@@ -172,7 +199,7 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
 
       const execResult = await executeTrade('SOLANA', privyUser, {
         transaction: unsignedTx,
-        quote,
+        quote: normalizedQuote,
       });
 
       if (!execResult.success) {
@@ -184,7 +211,7 @@ const TokenSwap: React.FC<TokenSwapProps> = ({ onClose }) => {
         data: {
           message: 'Swap submitted successfully',
           txHash: execResult.transactionHash,
-          quote,
+          quote: normalizedQuote,
         },
       });
     } catch (error: any) {
