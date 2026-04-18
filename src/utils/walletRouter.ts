@@ -8,6 +8,7 @@
  */
 
 import { useWallets } from '@privy-io/react-auth';
+import { useWallets as useSolanaWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { VersionedTransaction, Connection, PublicKey } from '@solana/web3.js';
 import { getMovementWallet } from '../lib/movement-wallet';
 import axios from 'axios';
@@ -36,14 +37,29 @@ export interface WalletRouterResult {
  */
 export function useWalletRouter() {
   const { wallets } = useWallets();
+  const { wallets: solanaWallets } = useSolanaWallets();
+  const { signTransaction: signSolanaTransaction } = useSignTransaction();
 
   /**
    * Get Solana wallet from Privy
    */
   const getSolanaWallet = () => {
-    const solanaWallet = wallets.find(
-      (w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet'
+    const candidateWallets = (solanaWallets?.length ? solanaWallets : wallets) as any[];
+    let solanaWallet = candidateWallets.find(
+      (w: any) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet'
     );
+    if (!solanaWallet) {
+      solanaWallet = candidateWallets.find((w: any) => w.chainType === 'solana');
+    }
+    if (!solanaWallet) {
+      solanaWallet = candidateWallets.find((w: any) => w.walletClientType === 'solana' || w.coinType === 501);
+    }
+    if (!solanaWallet) {
+      solanaWallet = candidateWallets.find((w: any) => {
+        const addr = String(w?.address || '');
+        return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
+      });
+    }
     
     if (!solanaWallet) {
       throw new Error('No Solana wallet found. Please ensure you have a Solana wallet connected.');
@@ -203,10 +219,16 @@ export function useWalletRouter() {
       // Method 4: Use sendTransaction if signTransaction is not available
       // (This would require sending directly, but we need to sign first)
       else {
-        throw new Error(
-          'Solana wallet signing not available. ' +
-          'Please ensure your Solana wallet (Phantom, etc.) is connected and supports transaction signing.'
-        );
+        const rpc = process.env.REACT_APP_SOLANA_RPC_URL || '';
+        const chain = rpc.includes('devnet') ? 'solana:devnet' : 'solana:mainnet';
+        const unsignedBytes = transaction.serialize();
+        const signedResult = await (signSolanaTransaction as any)({
+          transaction: unsignedBytes,
+          wallet: solanaWallet as any,
+          chain: chain as any,
+        });
+        const signedBytes = Buffer.from((signedResult as any).signedTransaction);
+        signedTx = VersionedTransaction.deserialize(signedBytes);
       }
 
       // Send to backend for broadcasting
