@@ -36,11 +36,11 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   const [solanaTxHash, setSolanaTxHash] = useState<string | null>(null);
   const [solanaBalance, setSolanaBalance] = useState<number | null>(null);
   const [solanaAddress, setSolanaAddress] = useState<string | null>(null);
+  const [paymentChain, setPaymentChain] = useState<'MOVEMENT' | 'SOLANA'>('MOVEMENT');
 
   const userId = localStorage.getItem('cto_user_email') || '';
   const isPrivyUser = authenticated && user;
-  const chainUpper = (chain || 'MOVEMENT').toUpperCase();
-  const isSolana = chainUpper === 'SOLANA';
+  const isSolana = paymentChain === 'SOLANA';
 
   useEffect(() => {
     if (!isSolana) return;
@@ -61,7 +61,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
         if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
       })
       .catch(() => null);
-  }, [chainUpper, wallets]);
+  }, [isSolana, wallets]);
 
   const getSolanaWallet = () => {
     const solWallet =
@@ -388,7 +388,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-600">Listing Fee:</span>
             <span className="text-2xl font-bold text-gray-800">
-              1.0 USDC
+              1.0 {isSolana ? 'USDC' : 'USDC.e'}
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-2">
@@ -398,6 +398,32 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         {!paymentId ? (
           <div className="space-y-3">
+            <div className="bg-gray-50 rounded-lg p-4 text-sm">
+              <p className="font-semibold text-gray-700 mb-2">Payment Method</p>
+              <label className="flex items-center gap-2 text-gray-700 mb-2">
+                <input
+                  type="radio"
+                  name="listing-payment-chain"
+                  value="MOVEMENT"
+                  checked={paymentChain === 'MOVEMENT'}
+                  onChange={() => setPaymentChain('MOVEMENT')}
+                  disabled={loading}
+                />
+                Fund with USDC.e (Movement)
+              </label>
+              <label className="flex items-center gap-2 text-gray-700">
+                <input
+                  type="radio"
+                  name="listing-payment-chain"
+                  value="SOLANA"
+                  checked={paymentChain === 'SOLANA'}
+                  onChange={() => setPaymentChain('SOLANA')}
+                  disabled={loading}
+                />
+                Fund with USDC (Solana)
+              </label>
+            </div>
+
             <button
               onClick={handlePayment}
               disabled={loading}
@@ -409,7 +435,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                   Processing...
                 </div>
               ) : (
-                'Pay 1.0 USDC'
+                `Pay 1.0 ${isSolana ? 'USDC' : 'USDC.e'}`
               )}
             </button>
 
@@ -455,7 +481,7 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         <div className="mt-6 pt-4 border-t border-gray-200">
           <p className="text-xs text-gray-500">
-            <strong>Note:</strong> Ensure you have at least 1.0 USDC in your {isSolana ? 'Solana' : 'Movement'} wallet. {isSolana ? ' You will also need a tiny amount of SOL for gas.' : ' You will also need a tiny amount of MOVE for gas.'}
+            <strong>Note:</strong> Ensure you have at least 1.0 {isSolana ? 'USDC' : 'USDC.e'} in your {isSolana ? 'Solana' : 'Movement'} wallet. {isSolana ? ' You will also need a tiny amount of SOL for gas.' : ' You will also need a tiny amount of MOVE for gas.'}
           </p>
         </div>
       </div>

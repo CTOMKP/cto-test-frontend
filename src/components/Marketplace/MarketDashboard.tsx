@@ -1266,10 +1266,24 @@ export default function MarketDashboard() {
               <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Payment Method</p>
                 <div className="mt-3">
-                  <label className="flex items-center gap-2 text-zinc-300">
-                    <input type="radio" name="payment-method" defaultChecked />
-                    Fund with {paymentTokenLabel}
-                  </label>
+                  {PAYMENT_TYPES.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 text-zinc-300 mb-2 last:mb-0">
+                      <input
+                        type="radio"
+                        name="payment-method"
+                        value={opt.value}
+                        checked={draft.paymentType === opt.value}
+                        onChange={() => updateDraft({ paymentType: opt.value })}
+                      />
+                      Fund with {opt.label}
+                    </label>
+                  ))}
+                  <p className="text-xs text-zinc-500 mt-2">
+                    Selected: {paymentTokenLabel}
+                  </p>
+                </div>
+                <div className="mt-3 text-xs text-zinc-500">
+                  Chain used for payment: {isSolanaPayment ? 'Solana' : 'Movement'}
                 </div>
               </div>
 
