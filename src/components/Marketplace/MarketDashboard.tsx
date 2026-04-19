@@ -184,9 +184,8 @@ export default function MarketDashboard() {
   const { user: privyUser } = usePrivyAuth();
   const { wallets } = useWallets();
   const { signRawHash } = useSignRawHash();
-
-  const getSolanaWallet = () => {
-    const solWallet =
+  const solanaWallet = useMemo(() => {
+    const candidate =
       wallets.find((w) => (w as any).chainType === 'solana') ||
       wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
       wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
@@ -194,10 +193,18 @@ export default function MarketDashboard() {
         const addr = w.address || '';
         return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
       });
-    if (!solWallet) {
+    if (!candidate?.address) return null;
+    const canSign =
+      ('signTransaction' in candidate && typeof (candidate as any).signTransaction === 'function') ||
+      typeof (candidate as any).provider?.signTransaction === 'function';
+    return canSign ? candidate : null;
+  }, [wallets]);
+
+  const getSolanaWallet = () => {
+    if (!solanaWallet) {
       throw new Error('No Solana wallet found. Please connect a Solana wallet in Privy.');
     }
-    return solWallet;
+    return solanaWallet;
   };
 
   const decodeBase64 = (base64: string) => {
@@ -310,21 +317,15 @@ export default function MarketDashboard() {
   }, []);
 
   useEffect(() => {
-    try {
-      const solWallet = getSolanaWallet();
-      if (solWallet?.address) {
-        setSolanaAddress(solWallet.address);
-        solanaWalletService
-          .getBalance(solWallet.address)
-          .then((data) => {
-            if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
-          })
-          .catch(() => null);
-      }
-    } catch {
-      // ignore if no Solana wallet
-    }
-  }, [wallets]);
+    if (!solanaWallet?.address) return;
+    setSolanaAddress(solanaWallet.address);
+    solanaWalletService
+      .getBalance(solanaWallet.address)
+      .then((data) => {
+        if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
+      })
+      .catch(() => null);
+  }, [solanaWallet]);
 
   useEffect(() => {
     try {
@@ -1273,11 +1274,17 @@ export default function MarketDashboard() {
                         name="payment-method"
                         value={opt.value}
                         checked={draft.paymentType === opt.value}
+                        disabled={isSubmitting || (opt.chain === 'SOLANA' && !solanaWallet)}
                         onChange={() => updateDraft({ paymentType: opt.value })}
                       />
                       Fund with {opt.label}
                     </label>
                   ))}
+                  {!solanaWallet && (
+                    <p className="text-xs text-amber-400 mt-1">
+                      Solana option unavailable in this session. Reconnect Privy with Solana enabled to use USDC (Solana).
+                    </p>
+                  )}
                   <p className="text-xs text-zinc-500 mt-2">
                     Selected: {paymentTokenLabel}
                   </p>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
@@ -41,10 +41,8 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   const userId = localStorage.getItem('cto_user_email') || '';
   const isPrivyUser = authenticated && user;
   const isSolana = paymentChain === 'SOLANA';
-
-  useEffect(() => {
-    if (!isSolana) return;
-    const solWallet =
+  const solanaWallet = useMemo(() => {
+    const candidate =
       wallets.find((w) => (w as any).chainType === 'solana') ||
       wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
       wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
@@ -52,30 +50,30 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
         const addr = w.address || '';
         return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
       });
-    if (!solWallet?.address) return;
+    if (!candidate?.address) return null;
+    const canSign =
+      ('signTransaction' in candidate && typeof (candidate as any).signTransaction === 'function') ||
+      typeof (candidate as any).provider?.signTransaction === 'function';
+    return canSign ? candidate : null;
+  }, [wallets]);
 
-    setSolanaAddress(solWallet.address);
+  useEffect(() => {
+    if (!isSolana || !solanaWallet?.address) return;
+
+    setSolanaAddress(solanaWallet.address);
     solanaWalletService
-      .getBalance(solWallet.address)
+      .getBalance(solanaWallet.address)
       .then((data) => {
         if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
       })
       .catch(() => null);
-  }, [isSolana, wallets]);
+  }, [isSolana, solanaWallet]);
 
   const getSolanaWallet = () => {
-    const solWallet =
-      wallets.find((w) => (w as any).chainType === 'solana') ||
-      wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
-      wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
-      wallets.find((w) => {
-        const addr = w.address || '';
-        return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
-      });
-    if (!solWallet) {
+    if (!solanaWallet) {
       throw new Error('No Solana wallet found. Please enable Solana in Privy and connect a Solana wallet.');
     }
-    return solWallet;
+    return solanaWallet;
   };
 
   const decodeBase64 = (base64: string) => {
@@ -418,15 +416,20 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                   value="SOLANA"
                   checked={paymentChain === 'SOLANA'}
                   onChange={() => setPaymentChain('SOLANA')}
-                  disabled={loading}
+                  disabled={loading || !solanaWallet}
                 />
                 Fund with USDC (Solana)
               </label>
+              {!solanaWallet && (
+                <p className="text-xs text-amber-700 mt-2">
+                  Solana payment unavailable for this user session. Reconnect Privy with Solana enabled or use USDC.e.
+                </p>
+              )}
             </div>
 
             <button
               onClick={handlePayment}
-              disabled={loading}
+              disabled={loading || (isSolana && !solanaWallet)}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
