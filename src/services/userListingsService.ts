@@ -80,7 +80,33 @@ export interface CreateUserListingPayload {
 
 export const userListingsService = {
   async scan(contractAddr: string, chain: string = 'SOLANA'): Promise<ScanResult> {
-    // Accept non-2xx statuses (e.g., 400 ineligible) and normalize response so UI can proceed
+    // Use listing scan endpoint as the source of truth for age metadata.
+    const listingScanRes = await axios.post(
+      `${backendUrl}/api/v1/listing/scan`,
+      { contractAddress: contractAddr, chain },
+      { headers: authHeaders(), validateStatus: () => true }
+    );
+
+    const listingData = listingScanRes.data?.data || listingScanRes.data;
+    if (listingScanRes.status >= 200 && listingScanRes.status < 300 && listingData?.listing) {
+      const tokenMeta = listingData?.listing?.metadata?.token || {};
+      const riskScore = listingData?.riskScore ?? 0;
+      const tier = listingData?.tier ?? 'UNQUALIFIED';
+      return {
+        success: true,
+        risk_score: riskScore,
+        tier,
+        risk_level: listingData?.listing?.riskLevel ?? undefined,
+        eligible: riskScore >= 50,
+        summary: listingData?.summary,
+        metadata: tokenMeta,
+        vettingScore: riskScore,
+        vettingTier: tier,
+        details: listingData,
+      } as ScanResult;
+    }
+
+    // Fallback to user-listings scan endpoint
     const res = await axios.post(
       `${backendUrl}/api/v1/user-listings/scan`,
       { contractAddr, chain },
