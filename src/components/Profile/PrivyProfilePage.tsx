@@ -890,9 +890,15 @@ export const PrivyProfilePage: React.FC = () => {
                             </div>
                           </td>
                           <td className="py-4 pr-4">
-                            <Link to={`/marketplace/ads/${ad.id}`} className="font-semibold text-gray-900 hover:underline">
-                              {ad.title}
-                            </Link>
+                            {ad.status === 'DRAFT' ? (
+                              <Link to="/market" className="font-semibold text-gray-900 hover:underline">
+                                {ad.title}
+                              </Link>
+                            ) : (
+                              <Link to={`/marketplace/ads/${ad.id}`} className="font-semibold text-gray-900 hover:underline">
+                                {ad.title}
+                              </Link>
+                            )}
                             <div className="text-xs text-gray-500">{ad.subCategory || ad.category}</div>
                           </td>
                           <td className="py-4 pr-4">
