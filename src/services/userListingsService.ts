@@ -41,8 +41,10 @@ export interface ScanResult {
     scan_timestamp?: string;
     verified?: boolean;
     holder_count?: number;
+    tier_note?: string | null;
     vetting_results?: {
       missingData?: string[];
+      tierNote?: string | null;
       [key: string]: any;
     };
     creation_transaction?: string;
