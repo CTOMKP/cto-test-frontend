@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -19,6 +19,7 @@ import supportTicketService, { SupportTicket } from '../../services/supportTicke
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout, authenticated, ready } = usePrivy();
   const [movementWallet, setMovementWallet] = useState<string | null>(null);
   const [isCreatingMovement, setIsCreatingMovement] = useState(false);
@@ -58,8 +59,9 @@ export const PrivyProfilePage: React.FC = () => {
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
   const [ticketSubject, setTicketSubject] = useState('');
   const [ticketMessage, setTicketMessage] = useState('');
-  const [ticketCategory, setTicketCategory] = useState<'GENERAL' | 'SWAP' | 'WALLET' | 'PAYMENT' | 'LISTING' | 'ADS' | 'ACCOUNT' | 'OTHER'>('GENERAL');
+  const [ticketCategory, setTicketCategory] = useState<'GENERAL' | 'SWAP' | 'WALLET' | 'PAYMENT' | 'LISTING' | 'ADS' | 'ACCOUNT' | 'FAUCET' | 'OTHER'>('GENERAL');
   const [ticketPriority, setTicketPriority] = useState<'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'>('NORMAL');
+  const [faucetWalletAddress, setFaucetWalletAddress] = useState('');
   const [ticketSubmitting, setTicketSubmitting] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
   const [myTickets, setMyTickets] = useState<SupportTicket[]>([]);
@@ -115,6 +117,33 @@ export const PrivyProfilePage: React.FC = () => {
   const handleSubmitTicket = async () => {
     const subject = ticketSubject.trim();
     const message = ticketMessage.trim();
+
+    if (ticketCategory === 'FAUCET') {
+      const walletAddress = faucetWalletAddress.trim();
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+        toast.error('Enter a valid Solana wallet address for faucet request');
+        return;
+      }
+      try {
+        setTicketSubmitting(true);
+        await supportTicketService.applySolanaUsdcFaucet({
+          walletAddress,
+          reason: message || undefined,
+        });
+        toast.success('Faucet request submitted');
+        setTicketSubject('');
+        setTicketMessage('');
+        setTicketCategory('GENERAL');
+        setTicketPriority('NORMAL');
+        setFaucetWalletAddress('');
+        await loadSupportTickets();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || 'Failed to submit faucet request');
+      } finally {
+        setTicketSubmitting(false);
+      }
+      return;
+    }
     if (subject.length < 3) {
       toast.error('Ticket subject must be at least 3 characters');
       return;
@@ -549,30 +578,63 @@ export const PrivyProfilePage: React.FC = () => {
 
   // Combine Privy wallets with backend wallets and de-duplicate by address
   const privyWallets = user?.linkedAccounts?.filter((account: any) => account.type === 'wallet') || [];
-  
+
   // Create a map to de-duplicate wallets by address (case-insensitive)
-  const walletMap = new Map();
-  
-  // Add privy wallets first (they are usually the source of truth for the frontend)
+  const walletMap = new Map<string, any>();
+
+  const mergeWalletRecord = (existing: any, incoming: any) => {
+    if (!existing) return incoming;
+    return {
+      ...existing,
+      ...incoming,
+      // keep truthy metadata from either source
+      chainType: incoming.chainType || existing.chainType,
+      blockchain: incoming.blockchain || existing.blockchain,
+      walletClientType: incoming.walletClientType || existing.walletClientType,
+      walletClient: incoming.walletClient || existing.walletClient,
+      connectorType: incoming.connectorType || existing.connectorType,
+      accountType: incoming.accountType || existing.accountType,
+      source: existing.source === 'privy' || incoming.source === 'privy' ? 'privy' : incoming.source,
+      isPrimary: Boolean(existing.isPrimary || incoming.isPrimary),
+    };
+  };
+
+  // Add Privy wallets first (source of truth for connection metadata)
   privyWallets.forEach((w: any) => {
-    if (w.address) {
-      walletMap.set(w.address.toLowerCase(), {
-        ...w,
-        source: 'privy'
-      });
-    }
+    if (!w.address) return;
+    const key = w.address.toLowerCase();
+    const incoming = { ...w, source: 'privy' };
+    walletMap.set(key, mergeWalletRecord(walletMap.get(key), incoming));
   });
-  
-  // Add backend wallets, but don't overwrite privy ones (to keep primary status/labels)
+
+  // Merge backend wallets (source of truth for persisted blockchain labels)
   allWallets.forEach((w: any) => {
-    if (w.address && !walletMap.has(w.address.toLowerCase())) {
-      walletMap.set(w.address.toLowerCase(), {
-        ...w,
-        source: 'backend'
-      });
-    }
+    if (!w.address) return;
+    const key = w.address.toLowerCase();
+    const incoming = { ...w, source: 'backend' };
+    walletMap.set(key, mergeWalletRecord(walletMap.get(key), incoming));
   });
-  
+
+  const getWalletOrigin = (wallet: any) => {
+    const markers = [
+      wallet.walletClientType,
+      wallet.walletClient,
+      wallet.connectorType,
+      wallet.connector,
+      wallet.provider,
+      wallet.accountType,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    if (markers.includes('phantom')) return { kind: 'connected', label: 'Connected Wallet (Phantom)' };
+    if (markers.includes('metamask')) return { kind: 'connected', label: 'Connected Wallet (MetaMask)' };
+    if (markers.includes('coinbase')) return { kind: 'connected', label: 'Connected Wallet (Coinbase)' };
+    if (markers.includes('walletconnect')) return { kind: 'connected', label: 'Connected Wallet (WalletConnect)' };
+    return { kind: 'embedded', label: 'Embedded Wallet (Managed by Privy)' };
+  };
+
   const displayWallets = Array.from(walletMap.values());
   const email = user?.email?.address || user?.wallet?.address || 'Privy User';
   const fallbackDisplayName = user?.email?.address?.split('@')[0] || user?.wallet?.address || 'User';
@@ -918,20 +980,21 @@ export const PrivyProfilePage: React.FC = () => {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
             <div className="grid grid-cols-2 gap-3">
-              <select
-                value={ticketCategory}
-                onChange={(e) => setTicketCategory(e.target.value as any)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
+	              <select
+	                value={ticketCategory}
+	                onChange={(e) => setTicketCategory(e.target.value as any)}
+	                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+	              >
                 <option value="GENERAL">General</option>
                 <option value="SWAP">Swap</option>
                 <option value="WALLET">Wallet</option>
                 <option value="PAYMENT">Payment</option>
                 <option value="LISTING">Listing</option>
                 <option value="ADS">Ads</option>
-                <option value="ACCOUNT">Account</option>
-                <option value="OTHER">Other</option>
-              </select>
+	                <option value="ACCOUNT">Account</option>
+	                <option value="FAUCET">Faucet</option>
+	                <option value="OTHER">Other</option>
+	              </select>
               <select
                 value={ticketPriority}
                 onChange={(e) => setTicketPriority(e.target.value as any)}
@@ -944,12 +1007,21 @@ export const PrivyProfilePage: React.FC = () => {
               </select>
             </div>
           </div>
-          <textarea
-            value={ticketMessage}
-            onChange={(e) => setTicketMessage(e.target.value)}
-            placeholder="Describe your issue clearly (minimum 10 characters)"
-            className="w-full min-h-[110px] border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
-          />
+	          <textarea
+	            value={ticketMessage}
+	            onChange={(e) => setTicketMessage(e.target.value)}
+	            placeholder={ticketCategory === 'FAUCET' ? 'Optional reason for faucet request' : 'Describe your issue clearly (minimum 10 characters)'}
+	            className="w-full min-h-[110px] border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
+	          />
+            {ticketCategory === 'FAUCET' && (
+              <input
+                type="text"
+                value={faucetWalletAddress}
+                onChange={(e) => setFaucetWalletAddress(e.target.value)}
+                placeholder="Solana wallet address for test USDC"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
+              />
+            )}
           <button
             onClick={handleSubmitTicket}
             disabled={ticketSubmitting}
@@ -1000,6 +1072,13 @@ export const PrivyProfilePage: React.FC = () => {
                 <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-purple-500 transition-colors">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
+                      {(() => {
+                        const origin = getWalletOrigin(wallet);
+                        const chainLabel =
+                          wallet.blockchain === 'MOVEMENT' || wallet.chainType === 'aptos'
+                            ? 'Movement Wallet'
+                            : `${(wallet.chainType || wallet.blockchain || 'Unknown').toLowerCase()} Wallet`;
+                        return (
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-2xl">
                           {(wallet.chainType === 'ethereum' || wallet.blockchain === 'ETHEREUM') && '⟠'}
@@ -1009,41 +1088,29 @@ export const PrivyProfilePage: React.FC = () => {
                           {(wallet.chainType === 'aptos' || wallet.blockchain === 'APTOS' || wallet.blockchain === 'MOVEMENT') && '🅰️'}
                         </span>
                         <span className="font-semibold text-gray-900 capitalize">
-                          {wallet.blockchain === 'MOVEMENT' || wallet.chainType === 'aptos'
-                            ? 'Movement Wallet' 
-                            : (wallet.chainType || wallet.blockchain || 'Unknown').toLowerCase() + ' Wallet'}
+                          {chainLabel}
                         </span>
                         {(index === 0 || wallet.isPrimary) && (
                           <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
                             Primary
                           </span>
                         )}
-                        {wallet.walletClient && (
-                          <span className={`text-xs px-2 py-1 rounded-full capitalize ${
-                            wallet.walletClient === 'metamask' 
-                              ? 'bg-orange-100 text-orange-800' 
-                              : wallet.walletClient === 'privy'
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full ${
+                            origin.kind === 'embedded'
                               ? 'bg-purple-100 text-purple-800'
                               : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {wallet.walletClient === 'metamask' ? '🦊 MetaMask' : 
-                             wallet.walletClient === 'privy' ? '🔐 Privy Embedded' :
-                             wallet.walletClient}
-                          </span>
-                        )}
+                          }`}
+                        >
+                          {origin.kind === 'embedded' ? '🔐 Embedded' : '🔗 Connected'}
+                        </span>
                       </div>
+                        );
+                      })()}
                       <div className="font-mono text-sm text-gray-600 break-all">
                         {wallet.address}
                       </div>
-                      {wallet.walletClient === 'privy' && (
-                        <p className="text-xs text-gray-400 mt-1">🔐 Privy Embedded Wallet (Managed by Privy)</p>
-                      )}
-                      {wallet.walletClient === 'metamask' && (
-                        <p className="text-xs text-gray-400 mt-1">🦊 MetaMask Wallet (You control the keys)</p>
-                      )}
-                      {!wallet.walletClient && (
-                        <p className="text-xs text-gray-400 mt-1">Embedded Wallet (Managed by Privy)</p>
-                      )}
+                      <p className="text-xs text-gray-400 mt-1">{getWalletOrigin(wallet).label}</p>
                     </div>
                     <button
                       onClick={() => {
@@ -1115,3 +1182,10 @@ export const PrivyProfilePage: React.FC = () => {
   );
 };
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'ads' || tab === 'listings' || tab === 'tx') {
+      setActiveTab(tab);
+    }
+  }, [location.search]);

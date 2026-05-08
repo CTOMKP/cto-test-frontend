@@ -10,6 +10,7 @@ import { privyService } from '../../services/privyService';
 import { usePrivyAuth } from '../../services/privyAuthService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
 import { useWallets } from '@privy-io/react-auth';
+import { useWallets as useSolanaWallets, useCreateWallet as useCreateSolanaWallet, useSignTransaction } from '@privy-io/react-auth/solana';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { pfpService } from '../../services/pfpService';
@@ -183,28 +184,60 @@ export default function MarketDashboard() {
 
   const { user: privyUser } = usePrivyAuth();
   const { wallets } = useWallets();
+  const { wallets: solanaWallets } = useSolanaWallets();
+  const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
+  const { signTransaction: signSolanaTransaction } = useSignTransaction();
   const { signRawHash } = useSignRawHash();
   const solanaWallet = useMemo(() => {
     const candidate =
-      wallets.find((w) => (w as any).chainType === 'solana') ||
-      wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
-      wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
-      wallets.find((w) => {
+      solanaWallets.find((w) => (w as any).chainType === 'solana') ||
+      solanaWallets.find((w) => (w as any).chainId === 'solana:mainnet' || (w as any).chainId === 'solana:devnet') ||
+      solanaWallets.find((w) => (w as any).walletClientType === 'solana' || (w as any).coinType === 501) ||
+      solanaWallets.find((w) => {
         const addr = w.address || '';
         return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
       });
     if (!candidate?.address) return null;
-    const canSign =
-      ('signTransaction' in candidate && typeof (candidate as any).signTransaction === 'function') ||
-      typeof (candidate as any).provider?.signTransaction === 'function';
-    return canSign ? candidate : null;
-  }, [wallets]);
+    return candidate;
+  }, [solanaWallets]);
 
   const getSolanaWallet = () => {
     if (!solanaWallet) {
       throw new Error('No Solana wallet found. Please connect a Solana wallet in Privy.');
     }
     return solanaWallet;
+  };
+
+  const ensureSolanaSignerWallet = async () => {
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return getSolanaWallet();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+
+    const hasLinkedSolana = !!(privyUser?.linkedAccounts || []).find(
+      (a: any) => a.chainType === 'solana' || a.walletClientType === 'solana'
+    );
+    if (!hasLinkedSolana) {
+      try {
+        await createSolanaWallet();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } catch {
+        // keep retrying detection below
+      }
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return getSolanaWallet();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+
+    return getSolanaWallet();
   };
 
   const decodeBase64 = (base64: string) => {
@@ -516,7 +549,7 @@ export default function MarketDashboard() {
       const nextId = await ensureDraftSaved();
       if (!nextId) throw new Error('Draft not created');
       if (isSolanaPayment) {
-        const solWallet = getSolanaWallet();
+        const solWallet = await ensureSolanaSignerWallet();
         const paymentResponse = await solanaPaymentService.createMarketplaceAdPayment(nextId, estimatedTotal);
         const paymentData = paymentResponse?.data || paymentResponse;
         const resolvedPaymentId =
@@ -534,32 +567,19 @@ export default function MarketDashboard() {
         }
 
         const txBytes = decodeBase64(txBase64);
-        let signedTx: any;
-        try {
-          const versioned = VersionedTransaction.deserialize(txBytes);
-          if ('signTransaction' in solWallet && typeof (solWallet as any).signTransaction === 'function') {
-            signedTx = await (solWallet as any).signTransaction(versioned);
-          } else if ((solWallet as any).provider?.signTransaction) {
-            signedTx = await (solWallet as any).provider.signTransaction(versioned);
-          } else {
-            throw new Error('Solana wallet signing not available.');
-          }
-        } catch {
-          const legacy = Transaction.from(txBytes);
-          if ('signTransaction' in solWallet && typeof (solWallet as any).signTransaction === 'function') {
-            signedTx = await (solWallet as any).signTransaction(legacy);
-          } else if ((solWallet as any).provider?.signTransaction) {
-            signedTx = await (solWallet as any).provider.signTransaction(legacy);
-          } else {
-            throw new Error('Solana wallet signing not available.');
-          }
-        }
 
         const connection = new Connection(
           process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
           'confirmed'
         );
-        const raw = signedTx.serialize();
+        const rpcUrl = process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const signingChain = rpcUrl.includes('devnet') ? 'solana:devnet' : 'solana:mainnet';
+        const signedResult = await signSolanaTransaction({
+          transaction: txBytes,
+          wallet: solWallet as any,
+          chain: signingChain as any,
+        });
+        const raw = Buffer.from(signedResult.signedTransaction);
         const txHash = await connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
         await connection.confirmTransaction(txHash, 'confirmed');
 
@@ -1274,15 +1294,15 @@ export default function MarketDashboard() {
                         name="payment-method"
                         value={opt.value}
                         checked={draft.paymentType === opt.value}
-                        disabled={isSubmitting || (opt.chain === 'SOLANA' && !solanaWallet)}
+                        disabled={isSubmitting}
                         onChange={() => updateDraft({ paymentType: opt.value })}
                       />
                       Fund with {opt.label}
                     </label>
                   ))}
                   {!solanaWallet && (
-                    <p className="text-xs text-amber-400 mt-1">
-                      Solana option unavailable in this session. Reconnect Privy with Solana enabled to use USDC (Solana).
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Solana signer wallet will be initialized by Privy on payment if not already available.
                     </p>
                   )}
                   <p className="text-xs text-zinc-500 mt-2">
@@ -1392,7 +1412,7 @@ export default function MarketDashboard() {
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
                 className="rounded-full border border-white/10 px-6 py-3 text-sm text-zinc-300"
-                onClick={() => navigate('/profile')}
+                onClick={() => navigate('/profile?tab=ads')}
               >
                 View My Ads
               </button>
