@@ -26,6 +26,14 @@ export const PrivyProfilePage: React.FC = () => {
   const [isSyncingWallets, setIsSyncingWallets] = useState(false);
   const [allWallets, setAllWallets] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'listings' | 'ads' | 'tx'>('listings');
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'ads' || tab === 'listings' || tab === 'tx') {
+      setActiveTab(tab);
+    }
+  }, [location.search]);
+
   const [myListings, setMyListings] = useState<any[]>([]);
   const [listingsLoading, setListingsLoading] = useState(false);
   const [listingsError, setListingsError] = useState<string | null>(null);
@@ -1181,11 +1189,3 @@ export const PrivyProfilePage: React.FC = () => {
     </div>
   );
 };
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    if (tab === 'ads' || tab === 'listings' || tab === 'tx') {
-      setActiveTab(tab);
-    }
-  }, [location.search]);
