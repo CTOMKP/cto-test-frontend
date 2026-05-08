@@ -551,8 +551,9 @@ export default function MarketDashboard() {
         const solWallet = await ensureSolanaSignerWallet();
         const paymentResponse = await marketplaceService.createPayment(nextId, 'SOLANA');
         const paymentData = paymentResponse?.data || paymentResponse;
+        const paymentObject = paymentData?.payment || paymentData;
         const resolvedPaymentId =
-          paymentData?.paymentId || paymentData?.payment?.paymentId || paymentData?.payment?.id;
+          paymentData?.paymentId || paymentObject?.paymentId || paymentObject?.id;
         if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
 
         if (paymentData?.message?.includes('No payment required')) {
@@ -560,7 +561,7 @@ export default function MarketDashboard() {
           return;
         }
 
-        const txBase64 = paymentData?.transaction;
+        const txBase64 = paymentData?.transaction || paymentObject?.transaction || paymentObject?.transactionData;
         if (!txBase64) {
           throw new Error(paymentData?.message || 'Transaction data missing');
         }
