@@ -105,11 +105,14 @@ export default function Step1Scan({
   const provisional =
     scanResults?.provisional ??
     scanResults?.details?.provisional ??
+    Boolean(scanResults?.metadata?.tier_note || scanResults?.metadata?.vetting_results?.tierNote) ??
     false;
 
   const provisionalReason =
     scanResults?.provisional_reason ??
     scanResults?.details?.provisional_reason ??
+    scanResults?.metadata?.tier_note ??
+    scanResults?.metadata?.vetting_results?.tierNote ??
     null;
 
   const provisionalMissingData = useMemo(() => {
