@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
-import solanaPaymentService from '../../services/solanaPaymentService';
 import solanaWalletService from '../../services/solanaWalletService';
 import { privyService } from '../../services/privyService';
 import { usePrivyAuth } from '../../services/privyAuthService';
@@ -550,7 +549,7 @@ export default function MarketDashboard() {
       if (!nextId) throw new Error('Draft not created');
       if (isSolanaPayment) {
         const solWallet = await ensureSolanaSignerWallet();
-        const paymentResponse = await solanaPaymentService.createMarketplaceAdPayment(nextId, estimatedTotal);
+        const paymentResponse = await marketplaceService.createPayment(nextId, 'SOLANA');
         const paymentData = paymentResponse?.data || paymentResponse;
         const resolvedPaymentId =
           paymentData?.paymentId || paymentData?.payment?.paymentId || paymentData?.payment?.id;
@@ -584,7 +583,7 @@ export default function MarketDashboard() {
         await connection.confirmTransaction(txHash, 'confirmed');
 
         if (resolvedPaymentId) {
-          await solanaPaymentService.verifyMarketplaceAdPayment(resolvedPaymentId, txHash);
+          await marketplaceService.verifyPayment(resolvedPaymentId, txHash);
         }
 
         setStep('success');
