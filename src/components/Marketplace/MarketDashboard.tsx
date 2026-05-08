@@ -1,6 +1,6 @@
 ﻿
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
@@ -159,6 +159,7 @@ const getDaysAgo = (dateStr?: string | null) => {
 
 export default function MarketDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [now, setNow] = useState(() => Date.now());
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
@@ -245,6 +246,45 @@ export default function MarketDashboard() {
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return bytes;
   };
+
+  useEffect(() => {
+    const loadDraftFromQuery = async () => {
+      const params = new URLSearchParams(location.search);
+      const draftAdId = params.get('adId');
+      if (!draftAdId) return;
+
+      setAdId(draftAdId);
+      try {
+        const mine = await marketplaceService.listMine();
+        const ad = (Array.isArray(mine) ? mine : []).find((item: any) => item?.id === draftAdId);
+        if (!ad) return;
+
+        setDraft((prev) => ({
+          ...prev,
+          postType: ad.postType || prev.postType,
+          category: ad.category || prev.category,
+          subCategory: ad.subCategory || prev.subCategory,
+          projectName: ad.projectName || prev.projectName,
+          adTitle: ad.title || prev.adTitle,
+          description: ad.description || prev.description,
+          imagePreviews: Array.isArray(ad.images) ? ad.images : prev.imagePreviews,
+          blockchainFocus: (ad.chain || prev.blockchainFocus || '').toString(),
+          roleType: ad.offerType || prev.roleType,
+          paymentType: ad.priceCurrency || prev.paymentType,
+          amount: ad.priceAmount != null ? String(ad.priceAmount) : prev.amount,
+          tier: (ad.tier || prev.tier) as Tier,
+          homepageSpotlight: !!ad.homepageSpotlight,
+          autoBump: (ad.autoBumpDays || 0) > 0,
+          urgentTag: !!ad.urgentTag,
+          multiChainTag: !!ad.multiChainTag,
+        }));
+      } catch {
+        // leave defaults if draft load fails
+      }
+    };
+
+    loadDraftFromQuery();
+  }, [location.search]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
