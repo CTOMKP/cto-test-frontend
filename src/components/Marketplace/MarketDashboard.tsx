@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import marketplaceService from '../../services/marketplaceService';
 import { movementWalletService } from '../../services/movementWalletService';
+import solanaPaymentService from '../../services/solanaPaymentService';
 import solanaWalletService from '../../services/solanaWalletService';
 import { privyService } from '../../services/privyService';
 import { usePrivyAuth } from '../../services/privyAuthService';
@@ -181,6 +182,7 @@ export default function MarketDashboard() {
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
 
   const { user: privyUser } = usePrivyAuth();
   const { wallets } = useWallets();
@@ -247,6 +249,8 @@ export default function MarketDashboard() {
     return bytes;
   };
 
+  const fileKey = (file: File) => `${file.name}::${file.size}::${file.lastModified}::${file.type}`;
+
   useEffect(() => {
     const loadDraftFromQuery = async () => {
       const params = new URLSearchParams(location.search);
@@ -258,6 +262,9 @@ export default function MarketDashboard() {
         const mine = await marketplaceService.listMine();
         const ad = (Array.isArray(mine) ? mine : []).find((item: any) => item?.id === draftAdId);
         if (!ad) return;
+
+        // Open directly into the editor when user selects a draft/pending ad from profile.
+        setStep('details');
 
         setDraft((prev) => ({
           ...prev,
@@ -278,6 +285,8 @@ export default function MarketDashboard() {
           urgentTag: !!ad.urgentTag,
           multiChainTag: !!ad.multiChainTag,
         }));
+        setExistingImageUrls(Array.isArray(ad.images) ? ad.images.filter(Boolean) : []);
+        if (ad.subCategory) setSubCategoryInput(ad.subCategory);
       } catch {
         // leave defaults if draft load fails
       }
@@ -512,17 +521,37 @@ export default function MarketDashboard() {
   };
 
   const uploadImages = useCallback(async () => {
+    const cacheKey = '__cto_ad_uploaded_image_map__';
+    const readCache = (): Record<string, string> => {
+      try {
+        const raw = sessionStorage.getItem(cacheKey);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    };
+    const writeCache = (next: Record<string, string>) => {
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(next));
+      } catch {
+        // ignore cache write errors
+      }
+    };
+
     const userId = localStorage.getItem('cto_user_id');
     const images = draft.images.filter((file) => file && file.size > 0);
     if (!images.length || !userId) return [];
     setIsUploading(true);
     try {
-      const uploads = await Promise.all(
-        images.map(async (file) => {
-          const result = await pfpService.uploadProfileImage(file, userId);
-          return result.viewUrl;
-        })
-      );
+      const cache = readCache();
+      const uploads = await Promise.all(images.map(async (file) => {
+        const key = fileKey(file);
+        if (cache[key]) return cache[key];
+        const result = await pfpService.uploadProfileImage(file, userId);
+        cache[key] = result.viewUrl;
+        return result.viewUrl;
+      }));
+      writeCache(cache);
       return uploads;
     } finally {
       setIsUploading(false);
@@ -530,7 +559,8 @@ export default function MarketDashboard() {
   }, [draft.images]);
 
   const buildDraftPayload = async () => {
-    const imageUrls = await uploadImages();
+    const uploadedUrls = await uploadImages();
+    const imageUrls = [...new Set([...(existingImageUrls || []), ...(uploadedUrls || [])])];
     const priceAmount = Number.isFinite(Number(draft.amount)) ? Number(draft.amount) : undefined;
     return {
       postType: draft.postType,
@@ -587,6 +617,19 @@ export default function MarketDashboard() {
       setIsSubmitting(true);
       const nextId = await ensureDraftSaved();
       if (!nextId) throw new Error('Draft not created');
+
+      // Do not attempt payment when ad already moved out of draft.
+      const mine = await marketplaceService.listMine();
+      const currentAd = (Array.isArray(mine) ? mine : []).find((item: any) => item?.id === nextId);
+      if (currentAd && currentAd.status !== 'DRAFT') {
+        if (currentAd.status === 'PENDING_APPROVAL') {
+          toast('This ad is already submitted and awaiting admin approval.');
+          setStep('summary');
+          return;
+        }
+        throw new Error(`This ad cannot be paid in status: ${currentAd.status}`);
+      }
+
       if (isSolanaPayment) {
         const solWallet = await ensureSolanaSignerWallet();
         const paymentResponse = await marketplaceService.createPayment(nextId, 'SOLANA');
@@ -601,10 +644,17 @@ export default function MarketDashboard() {
           return;
         }
 
-        const txBase64 = paymentData?.transaction || paymentObject?.transaction || paymentObject?.transactionData;
+        let txBase64 = paymentData?.transaction || paymentObject?.transaction || paymentObject?.transactionData;
         if (!txBase64) {
-          throw new Error(paymentData?.message || 'Transaction data missing');
+          // Fallback for legacy "payment already initiated" responses that don't include tx payload.
+          const legacyPayment = await solanaPaymentService.createMarketplaceAdPayment(nextId, estimatedTotal);
+          const legacyData = legacyPayment?.data || legacyPayment;
+          const legacyPaymentId =
+            legacyData?.paymentId || legacyData?.payment?.paymentId || legacyData?.payment?.id;
+          if (legacyPaymentId) setPaymentId(legacyPaymentId);
+          txBase64 = legacyData?.transaction || legacyData?.payment?.transaction;
         }
+        if (!txBase64) throw new Error(paymentData?.message || 'Transaction data missing');
 
         const txBytes = decodeBase64(txBase64);
 
