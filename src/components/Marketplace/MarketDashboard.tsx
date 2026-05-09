@@ -633,13 +633,15 @@ export default function MarketDashboard() {
       if (isSolanaPayment) {
         const solWallet = await ensureSolanaSignerWallet();
         const paymentResponse = await marketplaceService.createPayment(nextId, 'SOLANA');
-        const paymentData = paymentResponse?.data || paymentResponse;
-        const paymentObject = paymentData?.payment || paymentData;
+        const envelope = paymentResponse || {};
+        const paymentData = envelope?.data ?? envelope;
+        const paymentObject = paymentData?.payment || envelope?.payment || paymentData;
+        const paymentMessage = envelope?.message || paymentData?.message || paymentObject?.message || '';
         const resolvedPaymentId =
-          paymentData?.paymentId || paymentObject?.paymentId || paymentObject?.id;
+          envelope?.paymentId || paymentData?.paymentId || paymentObject?.paymentId || paymentObject?.id;
         if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
 
-        if (paymentData?.message?.includes('No payment required')) {
+        if (String(paymentMessage).includes('No payment required')) {
           setStep('success');
           return;
         }
@@ -654,7 +656,7 @@ export default function MarketDashboard() {
           if (legacyPaymentId) setPaymentId(legacyPaymentId);
           txBase64 = legacyData?.transaction || legacyData?.payment?.transaction;
         }
-        if (!txBase64) throw new Error(paymentData?.message || 'Transaction data missing');
+        if (!txBase64) throw new Error(paymentMessage || 'Transaction data missing');
 
         const txBytes = decodeBase64(txBase64);
 
