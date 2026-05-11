@@ -36,6 +36,7 @@ interface ListingItem {
   top10HoldersPercentage?: number | null;
   mintAuthDisabled?: boolean | null;
   raidingDetected?: boolean | null;
+  approved?: boolean;
   metadata?: {
     market?: {
       logoUrl?: string | null;
@@ -57,6 +58,8 @@ interface PaginatedResponse {
 }
 
 const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
+const WATCHLIST_KEY = 'cto_watchlist_tokens';
+const SETTINGS_KEY = 'cto_listing_settings';
 
 export const ListingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -77,6 +80,11 @@ export const ListingsPage: React.FC = () => {
     noRaiding: false,
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
+  const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
+  const [showApprovedOnly, setShowApprovedOnly] = useState(false);
+  const [language, setLanguage] = useState<'English' | 'Espanol'>('English');
+  const [currency, setCurrency] = useState<'USD' | 'EUR' | 'NGN'>('USD');
   const socketRef = useRef<Socket | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [updatedItems, setUpdatedItems] = useState<Set<string>>(new Set());
@@ -84,6 +92,29 @@ export const ListingsPage: React.FC = () => {
   const [volumeChanges, setVolumeChanges] = useState<Map<string, 'up' | 'down'>>(new Map());
   const previousPrices = useRef<Map<string, number>>(new Map());
   const previousVolumes = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    try {
+      const rawWatchlist = localStorage.getItem(WATCHLIST_KEY);
+      if (rawWatchlist) setWatchlist(new Set(JSON.parse(rawWatchlist)));
+      const rawSettings = localStorage.getItem(SETTINGS_KEY);
+      if (rawSettings) {
+        const parsed = JSON.parse(rawSettings);
+        if (parsed?.language) setLanguage(parsed.language);
+        if (parsed?.currency) setCurrency(parsed.currency);
+      }
+    } catch {
+      // ignore local settings parse errors
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(Array.from(watchlist)));
+  }, [watchlist]);
+
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ language, currency }));
+  }, [language, currency]);
 
   const fetchListings = async (showLoading = true) => {
     try {
@@ -368,6 +399,48 @@ export const ListingsPage: React.FC = () => {
   }, [backendUrl, page]);
 
   const isAuthenticated = useMemo(() => !!localStorage.getItem('cto_auth_token'), []);
+  const visibleItems = useMemo(() => {
+    const items = data?.items || [];
+    return items.filter((item) => {
+      const watchlistOk = !showWatchlistOnly || watchlist.has(item.contractAddress);
+      const approvedOk = !showApprovedOnly || Boolean(item.approved) || Boolean(item.tier && item.tier !== 'unclassified');
+      return watchlistOk && approvedOk;
+    });
+  }, [data?.items, showWatchlistOnly, showApprovedOnly, watchlist]);
+
+  const isApproved = (it: ListingItem) => Boolean(it.approved) || Boolean(it.tier && it.tier !== 'unclassified');
+
+  const formatMoney = (value: number | null | undefined) => {
+    if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+    const fx = currency === 'EUR' ? 0.92 : currency === 'NGN' ? 1600 : 1;
+    const symbol = currency === 'EUR' ? 'EUR ' : currency === 'NGN' ? 'NGN ' : '$';
+    const converted = value * fx;
+    return `${symbol}${converted.toLocaleString(undefined, { maximumFractionDigits: converted < 1 ? 6 : 2 })}`;
+  };
+
+  const copy = useMemo(
+    () =>
+      language === 'Espanol'
+        ? {
+            title: 'CTO Listados',
+            searchPlaceholder: 'Buscar nombre / simbolo / direccion',
+            filters: 'Filtros',
+            watchlist: 'Seguimiento',
+            approved: 'Aprobados',
+            showing: 'Mostrando',
+            listings: 'listados',
+          }
+        : {
+            title: 'CTO Listings',
+            searchPlaceholder: 'Search name / symbol / address',
+            filters: 'Filters',
+            watchlist: 'Watchlist',
+            approved: 'Approved',
+            showing: 'Showing',
+            listings: 'listings',
+          },
+    [language],
+  );
   
   // Preload images for the next page to improve navigation experience
   const preloadNextPageImages = async () => {
@@ -444,7 +517,7 @@ export const ListingsPage: React.FC = () => {
       <header className="sticky top-0 z-10 bg-black border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center">
-            <h1 className="text-xl font-semibold text-white">CTO Listings</h1>
+            <h1 className="text-xl font-semibold text-white">{copy.title}</h1>
             {lastUpdate && (
               <div className="ml-3 text-xs text-green-400 flex items-center">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>
@@ -455,7 +528,7 @@ export const ListingsPage: React.FC = () => {
           <div className="flex items-center gap-3">
             <input
               className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-white placeholder-gray-400"
-              placeholder="Search name / symbol / address"
+              placeholder={copy.searchPlaceholder}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchListings(true); } }}
@@ -464,7 +537,38 @@ export const ListingsPage: React.FC = () => {
               className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm flex items-center gap-1"
               onClick={() => setShowFilters(!showFilters)}
             >
-              🔍 Filters
+              {copy.filters}
+            </button>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'English' | 'Espanol')}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"
+              title="Language"
+            >
+              <option>English</option>
+              <option>Espanol</option>
+            </select>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value as 'USD' | 'EUR' | 'NGN')}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"
+              title="Currency"
+            >
+              <option>USD</option>
+              <option>EUR</option>
+              <option>NGN</option>
+            </select>
+            <button
+              className={`px-3 py-1 rounded text-sm border ${showWatchlistOnly ? 'bg-amber-600 border-amber-500 text-white' : 'border-gray-700 text-gray-300 hover:bg-gray-800'}`}
+              onClick={() => setShowWatchlistOnly((v) => !v)}
+            >
+              {copy.watchlist}
+            </button>
+            <button
+              className={`px-3 py-1 rounded text-sm border ${showApprovedOnly ? 'bg-emerald-700 border-emerald-500 text-white' : 'border-gray-700 text-gray-300 hover:bg-gray-800'}`}
+              onClick={() => setShowApprovedOnly((v) => !v)}
+            >
+              {copy.approved}
             </button>
             {!isAuthenticated ? (
               <button
@@ -600,7 +704,7 @@ export const ListingsPage: React.FC = () => {
           <>
             <div className="flex items-center justify-between mb-4">
               <div className="text-sm text-gray-600">
-                Showing {data.items.length} of {data.total} listings
+                {copy.showing} {visibleItems.length} of {data.total} {copy.listings}
               </div>
               {lastUpdate && (
                 <div className="text-xs text-gray-600 flex items-center">
@@ -633,7 +737,7 @@ export const ListingsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
-                  {(data.items || []).map((it) => {
+                  {visibleItems.map((it) => {
                     // Format price with appropriate precision
                     const formatPrice = (price: number | null | undefined) => {
                       if (price === null || price === undefined) return '--';
@@ -764,7 +868,27 @@ export const ListingsPage: React.FC = () => {
                               />
                             </div>
                             <div className="flex flex-col">
-                              <span className="text-sm font-bold text-white uppercase">{it.symbol || 'Unknown'}</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setWatchlist((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(it.contractAddress)) next.delete(it.contractAddress);
+                                      else next.add(it.contractAddress);
+                                      return next;
+                                    });
+                                  }}
+                                  className={watchlist.has(it.contractAddress) ? 'text-amber-300' : 'text-gray-500 hover:text-gray-300'}
+                                  title="Toggle watchlist"
+                                >
+                                  {watchlist.has(it.contractAddress) ? 'ON' : 'ADD'}
+                                </button>
+                                <span className="text-sm font-bold text-white uppercase">{it.symbol || 'Unknown'}</span>
+                                {isApproved(it) && (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-900 text-emerald-200 text-[10px] font-semibold">APPROVED</span>
+                                )}
+                              </div>
                               <span className="text-[10px] text-gray-500 font-medium truncate max-w-[150px]">{it.name || it.contractAddress}</span>
                             </div>
                           </div>
@@ -805,7 +929,7 @@ export const ListingsPage: React.FC = () => {
                                 ? 'text-red-400 font-bold animate-pulse' 
                                 : 'text-white'
                             }`}>
-                              {formatPrice(it.priceUsd)}
+                              {formatMoney(it.priceUsd)}
                             </div>
                             <div className={`text-xs font-medium ${
                               Number(it.change24h || 0) >= 0 ? 'text-green-400' : 'text-red-400'
