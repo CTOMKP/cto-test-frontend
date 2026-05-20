@@ -16,6 +16,15 @@ export interface TradeEvent {
   priceUSD?: number | null;
 }
 
+export interface TokenTradesResponse {
+  trades: TradeEvent[];
+  dataWindowUsed?: 'all' | '24h' | '7d' | '14d';
+  isFallbackData?: boolean;
+  lastTradeAt?: string | null;
+  sourceUsed?: string;
+  dataConfidence?: 'high' | 'medium' | 'low';
+}
+
 export interface ListingQuery {
   q?: string;
   chain?: string;
@@ -60,16 +69,31 @@ export const listingService = {
     limit: number = 50,
     chain?: string,
   ): Promise<TradeEvent[]> {
+    const response = await this.getTokenTradesResponse(contractAddress, limit, chain);
+    return response.trades;
+  },
+  async getTokenTradesResponse(
+    contractAddress: string,
+    limit: number = 50,
+    chain?: string,
+  ): Promise<TokenTradesResponse> {
     const backendUrl = getBackendUrl();
     const qs = new URLSearchParams();
     qs.set('limit', String(limit));
     if (chain) qs.set('chain', chain);
-    // Always allow backend cache to reduce upstream API usage
     const res = await axios.get(
       `${backendUrl}/api/v1/tokens/${contractAddress}/trades?${qs.toString()}`
     );
     const payload = res.data;
-    return payload?.data?.data || payload?.data || payload || [];
+    const trades = payload?.data?.data || payload?.data || payload || [];
+    return {
+      trades: Array.isArray(trades) ? trades : [],
+      dataWindowUsed: payload?.dataWindowUsed,
+      isFallbackData: payload?.isFallbackData,
+      lastTradeAt: payload?.lastTradeAt ?? null,
+      sourceUsed: payload?.sourceUsed,
+      dataConfidence: payload?.dataConfidence,
+    };
   },
 };
 
