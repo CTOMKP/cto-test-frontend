@@ -5,6 +5,8 @@ import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useWallets as useSolanaWallets } from '@privy-io/react-auth/solana';
+import { PublicKey } from '@solana/web3.js';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
 import { enrichMarket } from '../../services/marketEnrichment';
@@ -42,6 +44,7 @@ export const ListingDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user, authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const { wallets: solanaWallets } = useSolanaWallets();
   const { executeTrade, sendBaseTransaction } = useWalletRouter();
   const [data, setData] = useState<PublicListing | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -57,6 +60,16 @@ export const ListingDetail: React.FC = () => {
   const knownTradeKeys = useRef<Set<string>>(new Set());
   const [trading, setTrading] = useState(false);
   const [tradeAmount, setTradeAmount] = useState<string>('1000000'); // Default: 1 USDC/SOL
+  const allWallets = useMemo(() => {
+    const merged = [...(wallets || []), ...(solanaWallets || [])];
+    const seen = new Set<string>();
+    return merged.filter((w: any) => {
+      const key = `${w?.address || ''}:${w?.chainId || ''}:${w?.walletClientType || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [wallets, solanaWallets]);
   const isMovement = useMemo(() => {
     if (!contractAddress) return false;
     return contractAddress.startsWith('0x') || (data?.chain || '').toUpperCase().includes('MOVE');
@@ -445,6 +458,17 @@ export const ListingDetail: React.FC = () => {
         return;
       }
 
+      if (chain === 'solana') {
+        try {
+          // Ensure we pass valid mint keys to Jupiter.
+          new PublicKey(inputToken);
+          new PublicKey(outputToken);
+        } catch {
+          toast.error('Invalid Solana mint address for swap pair.');
+          return;
+        }
+      }
+
       // Step 1: Get quote
       toast.loading('Getting quote...', { id: 'quote' });
       
@@ -514,7 +538,7 @@ export const ListingDetail: React.FC = () => {
       if (chain === 'solana') {
         // Step 2: Get wallet address (Solana)
         try {
-          walletAddress = await getWalletAddressForChain('SOLANA', user, wallets);
+          walletAddress = await getWalletAddressForChain('SOLANA', user, allWallets);
         } catch (walletError: any) {
           toast.error(walletError?.message || 'Solana wallet not found. Please connect a Solana wallet in Privy.');
           return;
@@ -559,7 +583,7 @@ export const ListingDetail: React.FC = () => {
           walletAddress = await getWalletAddressForChain(
             chainType as ChainType,
             user,
-            wallets
+            allWallets
           );
 
           if (!walletAddress) {

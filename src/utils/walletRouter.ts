@@ -62,7 +62,9 @@ export function useWalletRouter() {
     }
     
     if (!solanaWallet) {
-      throw new Error('No Solana wallet found. Please ensure you have a Solana wallet connected.');
+      throw new Error(
+        'No Solana signing wallet found in current Privy session. Please reconnect and ensure Solana is enabled in Privy Embedded Wallet chains.'
+      );
     }
     
     return solanaWallet;
