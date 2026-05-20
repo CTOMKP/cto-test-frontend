@@ -536,30 +536,74 @@ export const ListingDetail: React.FC = () => {
       let walletAddress: string | undefined;
 
       if (chain === 'solana') {
+        // Guard against invalid Solana token addresses (pair addresses / malformed mints).
+        try {
+          if (!contractAddress) throw new Error('Missing token address');
+          // Will throw if invalid base58/public key length
+          // eslint-disable-next-line no-new
+          new PublicKey(contractAddress);
+        } catch {
+          toast.error('Invalid Solana token mint for swap. This token cannot be traded via Jupiter.');
+          return;
+        }
+
         // Step 2: Get wallet address (Solana)
         try {
           walletAddress = await getWalletAddressForChain('SOLANA', user, allWallets);
+          if (!walletAddress && solanaWallets?.[0]?.address) {
+            walletAddress = solanaWallets[0].address;
+          }
         } catch (walletError: any) {
-          toast.error(walletError?.message || 'Solana wallet not found. Please connect a Solana wallet in Privy.');
+          const fallbackWallet = solanaWallets?.[0]?.address;
+          if (fallbackWallet) {
+            walletAddress = fallbackWallet;
+          } else {
+            toast.error(walletError?.message || 'Solana wallet not found. Please connect a Solana wallet in Privy.');
+            return;
+          }
+        }
+
+        if (!walletAddress) {
+          toast.error('No Solana wallet found. Please reconnect your wallet and try again.');
           return;
         }
 
         // Step 3: Build swap transaction (Solana via Jupiter)
-        toast.loading('Building swap transaction...', { id: 'build' });
-        const buildResponse = await axios.post(
-          `${backendUrl}/api/v1/trades/build-transaction`,
-          {
-            chain,
-            quote,
-            walletAddress,
-          },
-          { timeout: 20000 }
-        );
+        if (!quote?.rawQuote) {
+          console.error('Missing rawQuote for Solana build:', quote);
+          toast.error('Quote payload incomplete for Solana swap. Please refresh and retry.', { id: 'build' });
+          return;
+        }
 
-        const buildPayload = buildResponse.data;
-        const transactionData = buildPayload?.data ?? buildPayload;
+        toast.loading('Building swap transaction...', { id: 'build' });
+        let transactionData: any;
+        try {
+          const buildResponse = await axios.post(
+            `${backendUrl}/api/v1/trades/build-transaction`,
+            {
+              chain,
+              quote,
+              walletAddress,
+            },
+            { timeout: 20000 }
+          );
+
+          const buildPayload = buildResponse.data;
+          transactionData = buildPayload?.data ?? buildPayload;
+          console.log('[SOLANA_BUILD_RESPONSE]', buildPayload);
+        } catch (buildError: any) {
+          const message =
+            buildError?.response?.data?.message ||
+            buildError?.response?.data?.error ||
+            buildError?.message ||
+            'Failed to build Solana swap transaction';
+          toast.error(message, { id: 'build' });
+          return;
+        }
+
         if (!transactionData?.transaction) {
-          toast.error('Failed to build Solana swap transaction', { id: 'build' });
+          console.error('Solana build returned missing transaction payload:', transactionData);
+          toast.error('Failed to build Solana swap transaction: missing transaction payload', { id: 'build' });
           return;
         }
         toast.success('Transaction ready', { id: 'build' });
