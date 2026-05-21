@@ -74,6 +74,9 @@ export const ListingDetail: React.FC = () => {
     if (lower.includes('invalid solana mint')) {
       return 'Invalid Solana mint address. This looks like a pair/pool address, not a token mint.';
     }
+    if (lower.includes('status code 422')) {
+      return 'Swap route expired while building transaction. Please try again.';
+    }
     return message || 'Trade failed. Please try again.';
   };
   const allWallets = useMemo(() => {
@@ -90,6 +93,16 @@ export const ListingDetail: React.FC = () => {
     if (!contractAddress) return false;
     return contractAddress.startsWith('0x') || (data?.chain || '').toUpperCase().includes('MOVE');
   }, [contractAddress, data?.chain]);
+  const isSolanaMintValid = useMemo(() => {
+    if (chainType !== 'SOLANA') return true;
+    if (!contractAddress) return false;
+    try {
+      new PublicKey(contractAddress);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [chainType, contractAddress]);
 
   const dedupedTrades = useMemo(() => {
     const seen = new Set<string>();
@@ -1001,6 +1014,14 @@ export const ListingDetail: React.FC = () => {
                       className="px-4 py-2 bg-gray-300 text-gray-700 rounded cursor-not-allowed font-semibold"
                     >
                       Trading Coming Soon
+                    </button>
+                  ) : chainType === 'SOLANA' && !isSolanaMintValid ? (
+                    <button
+                      disabled
+                      className="px-4 py-2 bg-gray-300 text-gray-700 rounded cursor-not-allowed font-semibold"
+                      title="Invalid Solana mint address for this listing"
+                    >
+                      Invalid Solana Mint
                     </button>
                   ) : (
                     <>
