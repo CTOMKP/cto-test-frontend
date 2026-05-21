@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useWallets as useSolanaWallets, useCreateWallet as useCreateSolanaWallet } from '@privy-io/react-auth/solana';
+import { useWallets as useSolanaWallets, useCreateWallet as useCreateSolanaWallet, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey } from '@solana/web3.js';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
@@ -46,6 +46,7 @@ export const ListingDetail: React.FC = () => {
   const { wallets } = useWallets();
   const { wallets: solanaWallets } = useSolanaWallets();
   const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
+  const { signTransaction: signSolanaTransaction } = useSignTransaction();
   const { executeTrade, sendBaseTransaction } = useWalletRouter();
   const [data, setData] = useState<PublicListing | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -171,6 +172,13 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
+
+  const decodeBase64 = useCallback((base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }, []);
   const tradeChain = useMemo<string | undefined>(() => {
     if (!data?.chain) return undefined;
     const chainUpper = data.chain.toUpperCase();
@@ -739,10 +747,46 @@ export const ListingDetail: React.FC = () => {
 
         // Step 4: Execute trade (Solana)
         toast.loading('Executing trade...', { id: 'execute' });
-        const result = await executeTrade('SOLANA', user, {
-          quote,
-          transaction: transactionData.transaction,
+        const signingWallet = await ensureSolanaSignerWallet();
+        const rpcUrl = process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const signingChain = rpcUrl.includes('devnet') ? 'solana:devnet' : 'solana:mainnet';
+        const signed = await signSolanaTransaction({
+          transaction: decodeBase64(transactionData.transaction),
+          wallet: signingWallet as any,
+          chain: signingChain as any,
         });
+
+        const signedBytes = (signed as any).signedTransaction as Uint8Array;
+        let signedBinary = '';
+        for (let i = 0; i < signedBytes.length; i += 1) {
+          signedBinary += String.fromCharCode(signedBytes[i]);
+        }
+        const signedBase64 = btoa(signedBinary);
+
+        let executeResponse;
+        try {
+          executeResponse = await axios.post(
+            `${backendUrl}/api/v1/trades/execute`,
+            { chain: 'solana', quote, signedTransaction: signedBase64 },
+            { timeout: 45000 },
+          );
+        } catch (e: any) {
+          if (String(e?.message || '').toLowerCase().includes('timeout')) {
+            executeResponse = await axios.post(
+              `${backendUrl}/api/v1/trades/execute`,
+              { chain: 'solana', quote, signedTransaction: signedBase64 },
+              { timeout: 45000 },
+            );
+          } else {
+            throw e;
+          }
+        }
+        const execPayload = executeResponse?.data;
+        const execData = execPayload?.data ?? execPayload;
+        const txHash = execData?.transactionHash || execData?.txHash;
+        const result = txHash
+          ? { success: true, transactionHash: txHash }
+          : { success: false, error: execPayload?.message || 'Trade execution failed' };
 
         if (result.success && result.transactionHash) {
           toast.success(`Trade ${tradeType} executed! Hash: ${result.transactionHash.slice(0, 8)}...`, { id: 'execute' });
