@@ -605,7 +605,7 @@ export const ListingDetail: React.FC = () => {
 
         toast.loading('Building swap transaction...', { id: 'build' });
         let transactionData: any;
-        const requoteAndRebuild = async () => {
+        const requoteAndRebuild = async (retrySlippageBps: number = 50) => {
           const requote = await axios.post(
             `${backendUrl}/api/v1/trades/quote`,
             {
@@ -613,7 +613,7 @@ export const ListingDetail: React.FC = () => {
               inputToken,
               outputToken,
               amount: tradeAmount,
-              slippageBps: 50,
+              slippageBps: retrySlippageBps,
             },
             { timeout: 20000 },
           );
@@ -644,7 +644,7 @@ export const ListingDetail: React.FC = () => {
         } catch (buildError: any) {
           if (buildError?.response?.status === 422) {
             try {
-              transactionData = await requoteAndRebuild();
+              transactionData = await requoteAndRebuild(100);
             } catch (retryError: any) {
               const retryMsg =
                 retryError?.response?.data?.message ||
@@ -667,7 +667,7 @@ export const ListingDetail: React.FC = () => {
 
         if (!transactionData?.transaction) {
           try {
-            transactionData = await requoteAndRebuild();
+            transactionData = await requoteAndRebuild(100);
           } catch (retryError: any) {
             const retryMsg =
               retryError?.response?.data?.message ||
