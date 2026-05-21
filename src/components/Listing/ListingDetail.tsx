@@ -533,10 +533,21 @@ export const ListingDetail: React.FC = () => {
         return;
       }
 
-      let quote = payload?.data ?? payload;
-      if (quote?.data && !quote?.inputMint) {
-        quote = quote.data;
-      }
+      const normalizeQuotePayload = (candidate: any) => {
+        let normalized = candidate?.data ?? candidate;
+        if (normalized?.data && !normalized?.inputMint) {
+          normalized = normalized.data;
+        }
+        if (normalized?.quoteResponse && !normalized?.inputMint) {
+          normalized = normalized.quoteResponse;
+        }
+        if (normalized?.quote && !normalized?.inputMint) {
+          normalized = normalized.quote;
+        }
+        return normalized;
+      };
+
+      let quote = normalizeQuotePayload(payload);
       
       if (!quote) {
         console.error('No quote data found in response:', quoteResponse.data);
@@ -618,7 +629,7 @@ export const ListingDetail: React.FC = () => {
             { timeout: 20000 },
           );
           const rqPayload = requote.data;
-          const rqQuote = rqPayload?.data ?? rqPayload;
+          const rqQuote = normalizeQuotePayload(rqPayload);
           const retryBuild = await axios.post(
             `${backendUrl}/api/v1/trades/build-transaction`,
             { chain, quote: rqQuote, walletAddress },
