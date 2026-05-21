@@ -546,6 +546,13 @@ export const ListingDetail: React.FC = () => {
         }
         return normalized;
       };
+      const normalizeBuiltTxPayload = (candidate: any) => {
+        let normalized = candidate?.data ?? candidate;
+        if (normalized?.data && !normalized?.transaction) {
+          normalized = normalized.data;
+        }
+        return normalized;
+      };
 
       let quote = normalizeQuotePayload(payload);
       
@@ -636,7 +643,7 @@ export const ListingDetail: React.FC = () => {
             { timeout: 20000 },
           );
           const retryPayload = retryBuild.data;
-          return retryPayload?.data ?? retryPayload;
+          return normalizeBuiltTxPayload(retryPayload);
         };
         try {
           const buildResponse = await axios.post(
@@ -650,7 +657,7 @@ export const ListingDetail: React.FC = () => {
           );
 
           const buildPayload = buildResponse.data;
-          transactionData = buildPayload?.data ?? buildPayload;
+          transactionData = normalizeBuiltTxPayload(buildPayload);
           console.log('[SOLANA_BUILD_RESPONSE]', buildPayload);
         } catch (buildError: any) {
           if (buildError?.response?.status === 422) {
