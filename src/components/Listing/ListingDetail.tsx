@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useWallets as useSolanaWallets } from '@privy-io/react-auth/solana';
+import { useWallets as useSolanaWallets, useCreateWallet as useCreateSolanaWallet } from '@privy-io/react-auth/solana';
 import { PublicKey } from '@solana/web3.js';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
@@ -45,6 +45,7 @@ export const ListingDetail: React.FC = () => {
   const { user, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const { wallets: solanaWallets } = useSolanaWallets();
+  const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
   const { executeTrade, sendBaseTransaction } = useWalletRouter();
   const [data, setData] = useState<PublicListing | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -120,6 +121,45 @@ export const ListingDetail: React.FC = () => {
       return tB - tA;
     });
   }, [trades]);
+
+  const getSolanaWallet = useCallback(() => {
+    const wallet = (solanaWallets || []).find((w: any) => !!w?.address);
+    if (!wallet) {
+      throw new Error('No Solana wallet found. Please enable Solana in Privy and connect a Solana wallet.');
+    }
+    return wallet;
+  }, [solanaWallets]);
+
+  const ensureSolanaSignerWallet = useCallback(async () => {
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return getSolanaWallet();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+
+    const hasLinkedSolana = !!(user?.linkedAccounts || []).find(
+      (a: any) => a.chainType === 'solana' || a.walletClientType === 'solana'
+    );
+    if (!hasLinkedSolana) {
+      try {
+        await createSolanaWallet();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } catch {
+        // continue and retry detection
+      }
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return getSolanaWallet();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+    return getSolanaWallet();
+  }, [createSolanaWallet, getSolanaWallet, user?.linkedAccounts]);
   
   const chainType = useMemo<ChainType>(() => {
     if (!data?.chain) return 'SOLANA';
@@ -593,20 +633,13 @@ export const ListingDetail: React.FC = () => {
           return;
         }
 
-        // Step 2: Get wallet address (Solana)
+        // Step 2: Get wallet address (Solana signer wallet)
         try {
-          walletAddress = await getWalletAddressForChain('SOLANA', user, allWallets);
-          if (!walletAddress && solanaWallets?.[0]?.address) {
-            walletAddress = solanaWallets[0].address;
-          }
+          const signerWallet = await ensureSolanaSignerWallet();
+          walletAddress = signerWallet?.address;
         } catch (walletError: any) {
-          const fallbackWallet = solanaWallets?.[0]?.address;
-          if (fallbackWallet) {
-            walletAddress = fallbackWallet;
-          } else {
-            toast.error(walletError?.message || 'Solana wallet not found. Please connect a Solana wallet in Privy.');
-            return;
-          }
+          toast.error(walletError?.message || 'Solana wallet not found. Please connect a Solana wallet in Privy.');
+          return;
         }
 
         if (!walletAddress) {
