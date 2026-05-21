@@ -60,6 +60,22 @@ export const ListingDetail: React.FC = () => {
   const knownTradeKeys = useRef<Set<string>>(new Set());
   const [trading, setTrading] = useState(false);
   const [tradeAmount, setTradeAmount] = useState<string>('1000000'); // Default: 1 USDC/SOL
+  const formatTradeError = (message: string, chain: string) => {
+    const lower = (message || '').toLowerCase();
+    if (lower.includes('insufficient liquidity')) {
+      return `No liquidity route found on ${chain.toUpperCase()} for this amount. Try a smaller amount or another token.`;
+    }
+    if (lower.includes('not enough') && lower.includes('balance')) {
+      return `${message}. Fund your wallet with native gas token and retry.`;
+    }
+    if (lower.includes('not tradable')) {
+      return 'This token is currently not tradable on Jupiter routes.';
+    }
+    if (lower.includes('invalid solana mint')) {
+      return 'Invalid Solana mint address. This looks like a pair/pool address, not a token mint.';
+    }
+    return message || 'Trade failed. Please try again.';
+  };
   const allWallets = useMemo(() => {
     const merged = [...(wallets || []), ...(solanaWallets || [])];
     const seen = new Set<string>();
@@ -488,12 +504,11 @@ export const ListingDetail: React.FC = () => {
           }
         );
       } catch (quoteError: any) {
-        toast.error(
-          quoteError.response?.data?.message || 
-          quoteError.message || 
-          'Failed to get quote. Please try again.',
-          { id: 'quote', duration: 5000 }
-        );
+        const msg =
+          quoteError.response?.data?.message ||
+          quoteError.message ||
+          'Failed to get quote. Please try again.';
+        toast.error(formatTradeError(msg, chain), { id: 'quote', duration: 6000 });
         return;
       }
 
@@ -597,14 +612,47 @@ export const ListingDetail: React.FC = () => {
             buildError?.response?.data?.error ||
             buildError?.message ||
             'Failed to build Solana swap transaction';
-          toast.error(message, { id: 'build' });
+          toast.error(formatTradeError(message, chain), { id: 'build' });
           return;
         }
 
         if (!transactionData?.transaction) {
-          console.error('Solana build returned missing transaction payload:', transactionData);
-          toast.error('Failed to build Solana swap transaction: missing transaction payload', { id: 'build' });
-          return;
+          try {
+            const requote = await axios.post(
+              `${backendUrl}/api/v1/trades/quote`,
+              {
+                chain,
+                inputToken,
+                outputToken,
+                amount: tradeAmount,
+                slippageBps: 50,
+              },
+              { timeout: 20000 },
+            );
+            const rqPayload = requote.data;
+            const rqQuote = rqPayload?.data ?? rqPayload;
+            const retryBuild = await axios.post(
+              `${backendUrl}/api/v1/trades/build-transaction`,
+              { chain, quote: rqQuote, walletAddress },
+              { timeout: 20000 },
+            );
+            const retryPayload = retryBuild.data;
+            transactionData = retryPayload?.data ?? retryPayload;
+          } catch (retryError: any) {
+            const retryMsg =
+              retryError?.response?.data?.message ||
+              retryError?.response?.data?.error ||
+              retryError?.message ||
+              'Failed to build Solana swap transaction';
+            toast.error(formatTradeError(retryMsg, chain), { id: 'build' });
+            return;
+          }
+
+          if (!transactionData?.transaction) {
+            console.error('Solana build returned missing transaction payload:', transactionData);
+            toast.error('Route expired while building transaction. Please retry.', { id: 'build' });
+            return;
+          }
         }
         toast.success('Transaction ready', { id: 'build' });
 
@@ -677,7 +725,7 @@ export const ListingDetail: React.FC = () => {
           buildError?.response?.data?.error ||
           buildError?.message ||
           'Failed to build transaction';
-        toast.error(message, { id: 'build' });
+        toast.error(formatTradeError(message, chain), { id: 'build' });
         return;
       }
 
