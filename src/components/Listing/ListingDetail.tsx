@@ -62,6 +62,11 @@ export const ListingDetail: React.FC = () => {
   const knownTradeKeys = useRef<Set<string>>(new Set());
   const [trading, setTrading] = useState(false);
   const [tradeAmount, setTradeAmount] = useState<string>('1000000'); // Default: 1 USDC/SOL
+  const [tradeEligibility, setTradeEligibility] = useState<{
+    checking: boolean;
+    canTrade: boolean;
+    reason: string | null;
+  }>({ checking: false, canTrade: true, reason: null });
   const formatTradeError = (message: string, chain: string) => {
     const lower = (message || '').toLowerCase();
     if (lower.includes('insufficient liquidity')) {
@@ -172,6 +177,72 @@ export const ListingDetail: React.FC = () => {
     if (chainUpper === 'MOVEMENT' || chainUpper === 'APTOS') return 'MOVEMENT';
     return 'SOLANA';
   }, [data?.chain]);
+  const isTradingEnabled = chainType === 'BASE' || chainType === 'ETHEREUM' || chainType === 'BSC' || chainType === 'MOVEMENT' || chainType === 'SOLANA';
+
+  useEffect(() => {
+    if (!data || !contractAddress || !isTradingEnabled) {
+      setTradeEligibility({ checking: false, canTrade: false, reason: 'Trading unavailable for this chain.' });
+      return;
+    }
+    if (chainType === 'SOLANA' && !isSolanaMintValid) {
+      setTradeEligibility({ checking: false, canTrade: false, reason: 'Invalid Solana mint address.' });
+      return;
+    }
+    if (!tradeAmount || Number(tradeAmount) <= 0) {
+      setTradeEligibility({ checking: false, canTrade: false, reason: 'Enter a valid amount.' });
+      return;
+    }
+
+    let canceled = false;
+    const timer = setTimeout(async () => {
+      setTradeEligibility({ checking: true, canTrade: false, reason: null });
+      try {
+        const chain = chainType.toLowerCase();
+        let inputToken = contractAddress;
+        let outputToken = contractAddress;
+        if (chain === 'solana') {
+          inputToken = 'So11111111111111111111111111111111111111112';
+          outputToken = contractAddress;
+        } else if (chain === 'base' || chain === 'ethereum' || chain === 'bsc') {
+          inputToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+          outputToken = contractAddress;
+        } else if (chain === 'movement') {
+          inputToken = '0x1::aptos_coin::AptosCoin';
+          outputToken = contractAddress;
+        }
+
+        await axios.post(
+          `${backendUrl}/api/v1/trades/quote`,
+          {
+            chain,
+            inputToken,
+            outputToken,
+            amount: tradeAmount,
+            slippageBps: 50,
+          },
+          { timeout: 12000 },
+        );
+        if (!canceled) {
+          setTradeEligibility({ checking: false, canTrade: true, reason: null });
+        }
+      } catch (e: any) {
+        if (!canceled) {
+          const msg =
+            e?.response?.data?.message || e?.response?.data?.error || e?.message || 'Token not tradable right now.';
+          setTradeEligibility({
+            checking: false,
+            canTrade: false,
+            reason: formatTradeError(msg, chainType.toLowerCase()),
+          });
+        }
+      }
+    }, 600);
+
+    return () => {
+      canceled = true;
+      clearTimeout(timer);
+    };
+  }, [chainType, contractAddress, data, isSolanaMintValid, isTradingEnabled, tradeAmount]);
 
   const decodeBase64 = useCallback((base64: string) => {
     const binary = atob(base64);
@@ -193,7 +264,6 @@ export const ListingDetail: React.FC = () => {
   const isBaseChain = chainType === 'BASE';
   const isEthereumChain = chainType === 'ETHEREUM';
   const isBscChain = chainType === 'BSC';
-  const isTradingEnabled = chainType === 'BASE' || chainType === 'ETHEREUM' || chainType === 'BSC' || chainType === 'MOVEMENT' || chainType === 'SOLANA';
 
   // Function to ensure complete data with consistent fallbacks
   const ensureCompleteData = (original: PublicListing): Partial<PublicListing> => {
@@ -1145,10 +1215,10 @@ export const ListingDetail: React.FC = () => {
               }
               await handleTrade('BUY');
             }}
-            disabled={trading}
+            disabled={trading || tradeEligibility.checking || !tradeEligibility.canTrade}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
           >
-            {trading ? 'Processing...' : 'Buy'}
+            {trading ? 'Processing...' : tradeEligibility.checking ? 'Checking...' : 'Buy'}
           </button>
           <button
             onClick={async () => {
@@ -1158,10 +1228,10 @@ export const ListingDetail: React.FC = () => {
               }
               await handleTrade('SELL');
             }}
-            disabled={trading}
+            disabled={trading || tradeEligibility.checking || !tradeEligibility.canTrade}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
           >
-            {trading ? 'Processing...' : 'Sell'}
+            {trading ? 'Processing...' : tradeEligibility.checking ? 'Checking...' : 'Sell'}
           </button>
         </>
       )}
@@ -1169,6 +1239,11 @@ export const ListingDetail: React.FC = () => {
               )}
             </div>
           </div>
+          {authenticated && tradeEligibility.reason && (
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {tradeEligibility.reason}
+            </div>
+          )}
 
           {/* Consolidated metadata with robust fallbacks */}
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
