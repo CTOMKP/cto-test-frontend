@@ -605,6 +605,28 @@ export const ListingDetail: React.FC = () => {
 
         toast.loading('Building swap transaction...', { id: 'build' });
         let transactionData: any;
+        const requoteAndRebuild = async () => {
+          const requote = await axios.post(
+            `${backendUrl}/api/v1/trades/quote`,
+            {
+              chain,
+              inputToken,
+              outputToken,
+              amount: tradeAmount,
+              slippageBps: 50,
+            },
+            { timeout: 20000 },
+          );
+          const rqPayload = requote.data;
+          const rqQuote = rqPayload?.data ?? rqPayload;
+          const retryBuild = await axios.post(
+            `${backendUrl}/api/v1/trades/build-transaction`,
+            { chain, quote: rqQuote, walletAddress },
+            { timeout: 20000 },
+          );
+          const retryPayload = retryBuild.data;
+          return retryPayload?.data ?? retryPayload;
+        };
         try {
           const buildResponse = await axios.post(
             `${backendUrl}/api/v1/trades/build-transaction`,
@@ -620,6 +642,19 @@ export const ListingDetail: React.FC = () => {
           transactionData = buildPayload?.data ?? buildPayload;
           console.log('[SOLANA_BUILD_RESPONSE]', buildPayload);
         } catch (buildError: any) {
+          if (buildError?.response?.status === 422) {
+            try {
+              transactionData = await requoteAndRebuild();
+            } catch (retryError: any) {
+              const retryMsg =
+                retryError?.response?.data?.message ||
+                retryError?.response?.data?.error ||
+                retryError?.message ||
+                'Failed to build Solana swap transaction';
+              toast.error(formatTradeError(retryMsg, chain), { id: 'build' });
+              return;
+            }
+          } else {
           const message =
             buildError?.response?.data?.message ||
             buildError?.response?.data?.error ||
@@ -627,30 +662,12 @@ export const ListingDetail: React.FC = () => {
             'Failed to build Solana swap transaction';
           toast.error(formatTradeError(message, chain), { id: 'build' });
           return;
+          }
         }
 
         if (!transactionData?.transaction) {
           try {
-            const requote = await axios.post(
-              `${backendUrl}/api/v1/trades/quote`,
-              {
-                chain,
-                inputToken,
-                outputToken,
-                amount: tradeAmount,
-                slippageBps: 50,
-              },
-              { timeout: 20000 },
-            );
-            const rqPayload = requote.data;
-            const rqQuote = rqPayload?.data ?? rqPayload;
-            const retryBuild = await axios.post(
-              `${backendUrl}/api/v1/trades/build-transaction`,
-              { chain, quote: rqQuote, walletAddress },
-              { timeout: 20000 },
-            );
-            const retryPayload = retryBuild.data;
-            transactionData = retryPayload?.data ?? retryPayload;
+            transactionData = await requoteAndRebuild();
           } catch (retryError: any) {
             const retryMsg =
               retryError?.response?.data?.message ||
