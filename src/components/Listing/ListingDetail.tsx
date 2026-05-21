@@ -94,7 +94,7 @@ export const ListingDetail: React.FC = () => {
     return contractAddress.startsWith('0x') || (data?.chain || '').toUpperCase().includes('MOVE');
   }, [contractAddress, data?.chain]);
   const isSolanaMintValid = useMemo(() => {
-    if (chainType !== 'SOLANA') return true;
+    if ((data?.chain || '').toUpperCase() !== 'SOLANA') return true;
     if (!contractAddress) return false;
     try {
       new PublicKey(contractAddress);
@@ -102,7 +102,7 @@ export const ListingDetail: React.FC = () => {
     } catch {
       return false;
     }
-  }, [chainType, contractAddress]);
+  }, [data?.chain, contractAddress]);
 
   const dedupedTrades = useMemo(() => {
     const seen = new Set<string>();
