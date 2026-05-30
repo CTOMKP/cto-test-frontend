@@ -118,7 +118,7 @@ class CreatorProgramService {
       `${API_ENDPOINTS.auth.base}/api/v1/creator/me?limit=${limit}`,
       { headers: this.authHeaders },
     );
-    return response.data;
+    return response.data?.data ?? response.data;
   }
 
   async getReferrals(limit = 50) {
@@ -126,7 +126,7 @@ class CreatorProgramService {
       `${API_ENDPOINTS.auth.base}/api/v1/creator/referrals?limit=${limit}`,
       { headers: this.authHeaders },
     );
-    return response.data;
+    return response.data?.data ?? response.data;
   }
 
   async getEarnings(limit = 50) {
@@ -134,7 +134,7 @@ class CreatorProgramService {
       `${API_ENDPOINTS.auth.base}/api/v1/creator/earnings?limit=${limit}`,
       { headers: this.authHeaders },
     );
-    return response.data;
+    return response.data?.data ?? response.data;
   }
 
   async getPayouts(limit = 20) {
@@ -142,7 +142,7 @@ class CreatorProgramService {
       `${API_ENDPOINTS.auth.base}/api/v1/creator/payouts?limit=${limit}`,
       { headers: this.authHeaders },
     );
-    return response.data;
+    return response.data?.data ?? response.data;
   }
 
   async requestPayout(payload: CreatorPayoutRequest) {
@@ -151,7 +151,7 @@ class CreatorProgramService {
       payload,
       { headers: this.authHeaders },
     );
-    return response.data;
+    return response.data?.data ?? response.data;
   }
 }
 
