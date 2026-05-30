@@ -21,7 +21,7 @@ export const CreatorProgramSection: React.FC = () => {
       setError(null);
       const response = await creatorProgramService.getDashboard(8);
       setData(response);
-      setWalletAddress(response.account.payoutWalletAddress || localStorage.getItem('cto_wallet_address') || '');
+      setWalletAddress(response.account?.payoutWalletAddress || localStorage.getItem('cto_wallet_address') || '');
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to load creator dashboard');
     } finally {
@@ -33,7 +33,7 @@ export const CreatorProgramSection: React.FC = () => {
     void loadDashboard();
   }, []);
 
-  const referralLink = data?.account.referralLink || '';
+  const referralLink = data?.account?.referralLink || '';
   const nextTierLabel = useMemo(() => {
     if (!data?.stats.nextTierTarget) return 'Top tier reached';
     return `Next tier at ${data.stats.nextTierTarget} active referrals`;
@@ -95,7 +95,13 @@ export const CreatorProgramSection: React.FC = () => {
     );
   }
 
-  if (!data) return null;
+  if (!data?.account) {
+    return (
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-sm text-zinc-400">
+        Creator dashboard data is not available yet.
+      </div>
+    );
+  }
 
   return (
     <section className="rounded-3xl border border-amber-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-5 shadow-2xl shadow-amber-950/10">
