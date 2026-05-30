@@ -8,6 +8,19 @@ const currency = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 });
 
+const emptyStats = {
+  totalReferrals: 0,
+  activeReferrals: 0,
+  tier: 'STARTER' as const,
+  referralsNeededForNextTier: 0,
+  thisMonthEarnings: 0,
+  pendingPayoutBalance: 0,
+  reservedPayoutBalance: 0,
+  allTimeTotalEarned: 0,
+  creatorCutPercent: 0,
+  nextTierTarget: null as number | null,
+};
+
 export const CreatorProgramSection: React.FC = () => {
   const [data, setData] = useState<CreatorDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,6 +37,7 @@ export const CreatorProgramSection: React.FC = () => {
       setWalletAddress(response.account?.payoutWalletAddress || localStorage.getItem('cto_wallet_address') || '');
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to load creator dashboard');
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -33,11 +47,16 @@ export const CreatorProgramSection: React.FC = () => {
     void loadDashboard();
   }, []);
 
-  const referralLink = data?.account?.referralLink || '';
+  const account = data?.account;
+  const stats = data?.stats ?? emptyStats;
+  const referrals = data?.referrals ?? [];
+  const earnings = data?.earnings ?? [];
+  const payouts = data?.payouts ?? [];
+  const referralLink = account?.referralLink || '';
   const nextTierLabel = useMemo(() => {
-    if (!data?.stats.nextTierTarget) return 'Top tier reached';
-    return `Next tier at ${data.stats.nextTierTarget} active referrals`;
-  }, [data?.stats.nextTierTarget]);
+    if (!stats.nextTierTarget) return 'Top tier reached';
+    return `Next tier at ${stats.nextTierTarget} active referrals`;
+  }, [stats.nextTierTarget]);
 
   const copy = async (value: string) => {
     try {
@@ -49,7 +68,7 @@ export const CreatorProgramSection: React.FC = () => {
   };
 
   const handleRequestPayout = async () => {
-    if (!data) return;
+    if (!data?.account) return;
     const trimmedWallet = walletAddress.trim();
     if (!trimmedWallet) {
       toast.error('Wallet address is required');
@@ -95,7 +114,7 @@ export const CreatorProgramSection: React.FC = () => {
     );
   }
 
-  if (!data?.account) {
+  if (!account) {
     return (
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-sm text-zinc-400">
         Creator dashboard data is not available yet.
@@ -115,16 +134,16 @@ export const CreatorProgramSection: React.FC = () => {
         </div>
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-right">
           <div className="text-xs uppercase tracking-[0.3em] text-amber-200/70">Tier</div>
-          <div className="mt-1 text-xl font-semibold text-amber-100">{data.account.tier}</div>
+          <div className="mt-1 text-xl font-semibold text-amber-100">{stats.tier}</div>
           <div className="text-xs text-zinc-400">{nextTierLabel}</div>
         </div>
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-4">
-        <Stat label="Active referrals" value={String(data.stats.activeReferrals)} />
-        <Stat label="Pending balance" value={currency.format(data.stats.pendingPayoutBalance)} />
-        <Stat label="This month" value={currency.format(data.stats.thisMonthEarnings)} />
-        <Stat label="Cut percent" value={`${data.stats.creatorCutPercent}%`} />
+        <Stat label="Active referrals" value={String(stats.activeReferrals)} />
+        <Stat label="Pending balance" value={currency.format(stats.pendingPayoutBalance)} />
+        <Stat label="This month" value={currency.format(stats.thisMonthEarnings)} />
+        <Stat label="Cut percent" value={`${stats.creatorCutPercent}%`} />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -143,14 +162,14 @@ export const CreatorProgramSection: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => copy(data.account.referralCode)}
+              onClick={() => copy(account.referralCode)}
               className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
             >
               Copy code
             </button>
           </div>
           <div className="mt-4 text-xs uppercase tracking-[0.25em] text-zinc-500">Referral code</div>
-          <div className="mt-1 text-sm text-zinc-200">{data.account.referralCode}</div>
+          <div className="mt-1 text-sm text-zinc-200">{account.referralCode}</div>
         </div>
 
         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
@@ -180,16 +199,16 @@ export const CreatorProgramSection: React.FC = () => {
         <ListPanel
           title="Recent referrals"
           empty="No referrals yet."
-          items={data.referrals.map((referral) => ({
+          items={referrals.map((referral) => ({
             title: referral.referredUser?.email || `User ${referral.referredUserId}`,
-            meta: `${referral.status} • ${new Date(referral.signedUpAt).toLocaleDateString()}`,
+            meta: `${referral.status} - ${new Date(referral.signedUpAt).toLocaleDateString()}`,
             value: referral.isActive ? 'Active' : 'Pending',
           }))}
         />
         <ListPanel
           title="Recent earnings"
           empty="No earnings yet."
-          items={data.earnings.map((earning) => ({
+          items={earnings.map((earning) => ({
             title: earning.sourceType,
             meta: new Date(earning.createdAt).toLocaleString(),
             value: currency.format(earning.amountEarned),
@@ -198,7 +217,7 @@ export const CreatorProgramSection: React.FC = () => {
         <ListPanel
           title="Payout history"
           empty="No payouts yet."
-          items={data.payouts.map((payout) => ({
+          items={payouts.map((payout) => ({
             title: payout.status,
             meta: new Date(payout.createdAt).toLocaleString(),
             value: currency.format(payout.amountRequested),
