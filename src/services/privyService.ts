@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_ENDPOINTS } from '../utils/constants';
+import { getStoredCreatorReferralCode } from '../lib/creatorReferral';
 
 /**
  * Privy Authentication Service
@@ -11,11 +12,15 @@ class PrivyService {
    * @param privyToken - Privy authentication token from frontend
    * @returns User data and CTO JWT token
    */
-  async syncUser(privyToken: string) {
+  async syncUser(privyToken: string, referralCode?: string) {
     try {
+      const storedReferralCode = (referralCode || getStoredCreatorReferralCode()).trim();
       const response = await axios.post(
         `${API_ENDPOINTS.auth.base}/api/v1/auth/privy/sync`,
-        { privyToken },
+        {
+          privyToken,
+          referralCode: storedReferralCode || undefined,
+        },
         {
           headers: {
             'Content-Type': 'application/json',

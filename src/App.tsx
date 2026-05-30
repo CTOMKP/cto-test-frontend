@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { PrivyProvider } from '@privy-io/react-auth';
+import { createSolanaRpc, createSolanaRpcSubscriptions } from '@solana/kit';
 import { PrivyLoginPage } from './components/Auth/PrivyLoginPage';
 import { PrivyProfilePage } from './components/Profile/PrivyProfilePage';
 import { ListingsPage } from './components/Listing/ListingsPage';
@@ -13,6 +14,7 @@ import { ListingDetail } from './components/Listing/ListingDetail';
 import UserWormholeBridge from './components/UserWormholeBridge';
 import TokenSwap from './components/TokenSwap';
 import BackendIndicator from './components/common/BackendIndicator';
+import ReferralCapture from './components/ReferralCapture';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { PFPGenerator } from './components/PFP/PFPGenerator';
 import { AnimatedPFPIcon } from './components/PFP/AnimatedPFPIcon';
@@ -138,36 +140,44 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <Routes>
-      <Route path={ROUTES.home} element={<ListingsPage />} />
-      <Route path={ROUTES.login} element={<PrivyLoginPage />} />
-      <Route path={ROUTES.signup} element={<PrivyLoginPage />} />
-      <Route path={ROUTES.profile} element={<ProtectedRoute><PrivyProfilePage /></ProtectedRoute>} />
-      <Route path={ROUTES.createUserListing} element={<ProtectedRoute><CreateUserListingNew /></ProtectedRoute>} />
-      <Route path={ROUTES.myUserListings} element={<ProtectedRoute><MyUserListings /></ProtectedRoute>} />
-      <Route path="/bridge" element={<ProtectedRoute><UserWormholeBridge /></ProtectedRoute>} />
-      <Route path="/swap" element={<ProtectedRoute><TokenSwap /></ProtectedRoute>} />
-      <Route path="/pfp" element={<ProtectedRoute><PFPGenerator /></ProtectedRoute>} />
-      <Route path="/market" element={<MarketDashboard />} />
-      <Route path="/marketplace/ads/:id" element={<MarketplaceAdDetail />} />
-      <Route path="/marketplace/ads/:id/apply" element={<ProtectedRoute><MarketplaceApply /></ProtectedRoute>} />
-      <Route path="/messages" element={<ProtectedRoute><MarketplaceMessages /></ProtectedRoute>} />
-      <Route path="/messages/:threadId" element={<ProtectedRoute><MarketplaceMessages /></ProtectedRoute>} />
-      <Route path="/messages/:threadId/profile/:profileUserId" element={<ProtectedRoute><MarketplaceUserProfile /></ProtectedRoute>} />
-      <Route path="/two-phase-test" element={<TwoPhaseTesting />} />
-      <Route path={ROUTES.admin} element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-      {/* User listing public detail route */}
-      <Route path="/user-listings/:id" element={<UserListingDetail />} />
-      <Route path="/user-listings/:id/live" element={<ProtectedRoute><UserListingLivePage /></ProtectedRoute>} />
-      {/* Public listing detail route */}
-      <Route path="/listing/:contractAddress" element={<ListingDetail />} />
-      <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
-    </Routes>
+    <>
+      <ReferralCapture />
+      <Routes>
+        <Route path={ROUTES.home} element={<ListingsPage />} />
+        <Route path={ROUTES.login} element={<PrivyLoginPage />} />
+        <Route path={ROUTES.signup} element={<PrivyLoginPage />} />
+        <Route path={ROUTES.profile} element={<ProtectedRoute><PrivyProfilePage /></ProtectedRoute>} />
+        <Route path={ROUTES.createUserListing} element={<ProtectedRoute><CreateUserListingNew /></ProtectedRoute>} />
+        <Route path={ROUTES.myUserListings} element={<ProtectedRoute><MyUserListings /></ProtectedRoute>} />
+        <Route path="/bridge" element={<ProtectedRoute><UserWormholeBridge /></ProtectedRoute>} />
+        <Route path="/swap" element={<ProtectedRoute><TokenSwap /></ProtectedRoute>} />
+        <Route path="/pfp" element={<ProtectedRoute><PFPGenerator /></ProtectedRoute>} />
+        <Route path="/market" element={<MarketDashboard />} />
+        <Route path="/marketplace/ads/:id" element={<MarketplaceAdDetail />} />
+        <Route path="/marketplace/ads/:id/apply" element={<ProtectedRoute><MarketplaceApply /></ProtectedRoute>} />
+        <Route path="/messages" element={<ProtectedRoute><MarketplaceMessages /></ProtectedRoute>} />
+        <Route path="/messages/:threadId" element={<ProtectedRoute><MarketplaceMessages /></ProtectedRoute>} />
+        <Route path="/messages/:threadId/profile/:profileUserId" element={<ProtectedRoute><MarketplaceUserProfile /></ProtectedRoute>} />
+        <Route path="/two-phase-test" element={<TwoPhaseTesting />} />
+        <Route path={ROUTES.admin} element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+        {/* User listing public detail route */}
+        <Route path="/user-listings/:id" element={<UserListingDetail />} />
+        <Route path="/user-listings/:id/live" element={<ProtectedRoute><UserListingLivePage /></ProtectedRoute>} />
+        {/* Public listing detail route */}
+        <Route path="/listing/:contractAddress" element={<ListingDetail />} />
+        <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
+      </Routes>
+    </>
   );
 };
 
 const App: React.FC = () => {
   const privyAppId = process.env.REACT_APP_PRIVY_APP_ID;
+  const configuredSolanaRpc = process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+  const solanaMainnetRpc = process.env.REACT_APP_SOLANA_MAINNET_RPC_URL || configuredSolanaRpc;
+  const solanaMainnetWs = solanaMainnetRpc.replace(/^http/i, 'ws');
+  const solanaDevnetRpc = configuredSolanaRpc;
+  const solanaDevnetWs = solanaDevnetRpc.replace(/^http/i, 'ws');
   
   // Debug: Log Privy App ID
   console.log('Privy App ID:', privyAppId);
@@ -213,6 +223,28 @@ const App: React.FC = () => {
         config={{
           // Keep this minimal to avoid config bootstrap failures from providers that are not enabled for the app.
           loginMethods: ['email', 'wallet', 'google'],
+          embeddedWallets: {
+            ethereum: {
+              createOnLogin: 'all-users',
+            },
+            solana: {
+              createOnLogin: 'all-users',
+            },
+          },
+          solana: {
+            rpcs: {
+              'solana:mainnet': {
+                rpc: createSolanaRpc(solanaMainnetRpc),
+                rpcSubscriptions: createSolanaRpcSubscriptions(solanaMainnetWs),
+                blockExplorerUrl: 'https://explorer.solana.com',
+              },
+              'solana:devnet': {
+                rpc: createSolanaRpc(solanaDevnetRpc),
+                rpcSubscriptions: createSolanaRpcSubscriptions(solanaDevnetWs),
+                blockExplorerUrl: 'https://explorer.solana.com/?cluster=devnet',
+              },
+            },
+          },
           appearance: {
             theme: 'dark',
             accentColor: '#8B5CF6',

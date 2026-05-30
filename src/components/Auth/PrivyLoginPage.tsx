@@ -1,13 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
-import { useCreateWallet } from '@privy-io/react-auth/extended-chains';
+import { useCreateWallet as useCreateCurveWallet } from '@privy-io/react-auth/extended-chains';
+import { useCreateWallet as useCreateSolanaWallet, useWallets as useSolanaWallets } from '@privy-io/react-auth/solana';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { createMovementWallet, getMovementWallet } from '../../lib/movement-wallet';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import { persistRewardData } from '../../utils/rewardStorage';
+import { getStoredCreatorReferralCode } from '../../lib/creatorReferral';
 
 // Module-level Set to track processing user IDs across ALL component instances
 // This prevents multiple parallel runs
@@ -16,18 +18,42 @@ const processingUserIds = new Set<string>();
 export const PrivyLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, authenticated, user, ready, getAccessToken, logout } = usePrivy();
-  const { createWallet } = useCreateWallet();
+  const { createWallet: createCurveWallet } = useCreateCurveWallet();
+  const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
+  const { wallets: solanaSignerWallets } = useSolanaWallets();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
   const [isCreatingSolanaWallet, setIsCreatingSolanaWallet] = useState(false);
   const [syncProgress, setSyncProgress] = useState('');
   const [initTimedOut, setInitTimedOut] = useState(false);
+  const hasCompletedFlowRef = useRef(false);
+  const completionTimerRef = useRef<number | null>(null);
 
   // Use a ref to always have the latest user object in async loops
   const userRef = useRef(user);
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+
+  useEffect(() => {
+    return () => {
+      if (completionTimerRef.current) {
+        window.clearTimeout(completionTimerRef.current);
+      }
+    };
+  }, []);
+
+  const completeAuthFlow = (userId: string) => {
+    if (hasCompletedFlowRef.current) return;
+    hasCompletedFlowRef.current = true;
+
+    setSyncProgress('Redirecting to dashboard...');
+    setIsSyncing(false);
+    setIsCreatingMovementWallet(false);
+    setIsCreatingSolanaWallet(false);
+    processingUserIds.delete(userId);
+    navigate(ROUTES.profile, { replace: true });
+  };
 
   useEffect(() => {
     if (ready) {
@@ -73,7 +99,7 @@ export const PrivyLoginPage: React.FC = () => {
     handleMovementWalletAndSync(userId);
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, user?.id]);
+  }, [authenticated, user?.id, solanaSignerWallets?.length]);
 
   // Wait for Privy to fully load linkedAccounts (with retries)
   const waitForPrivyAccounts = async (maxRetries = 10, delayMs = 500): Promise<boolean> => {
@@ -96,8 +122,13 @@ export const PrivyLoginPage: React.FC = () => {
   // Handle Movement wallet creation and backend sync
   const handleMovementWalletAndSync = async (userId: string) => {
     try {
+      hasCompletedFlowRef.current = false;
       setIsSyncing(true);
       setSyncProgress('Initializing session...');
+      completionTimerRef.current = window.setTimeout(() => {
+        console.warn('Authentication flow timeout fallback triggered');
+        completeAuthFlow(userId);
+      }, 45000);
       
       // Step 1: Wait for Privy accounts to load
       await waitForPrivyAccounts();
@@ -125,7 +156,7 @@ export const PrivyLoginPage: React.FC = () => {
         
         try {
           // Create Movement wallet with 15 second timeout
-          const walletCreationPromise = createMovementWallet(userRef.current, createWallet);
+          const walletCreationPromise = createMovementWallet(userRef.current, createCurveWallet);
           const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Wallet creation timed out')), 15000)
           );
@@ -162,13 +193,13 @@ export const PrivyLoginPage: React.FC = () => {
         (w: any) => w.blockchain === 'SOLANA' || w.chainType === 'solana'
       ) || userRef.current?.linkedAccounts?.some(
         (a: any) => a.chainType === 'solana' || a.walletClientType === 'solana'
-      );
+      ) || (solanaSignerWallets?.length || 0) > 0;
 
       if (!hasSolWallet) {
         setSyncProgress('Creating Solana wallet...');
         setIsCreatingSolanaWallet(true);
         try {
-          await createWallet({ chainType: 'solana' as any });
+          await createSolanaWallet();
           await new Promise(resolve => setTimeout(resolve, 1500));
           await syncWithBackend();
         } catch (solError: any) {
@@ -180,21 +211,21 @@ export const PrivyLoginPage: React.FC = () => {
       }
 
       // Step 6: Navigation
-      setSyncProgress('Redirecting to dashboard...');
-      console.log('✅ Authentication flow complete, navigating...');
-      
-      setTimeout(() => {
-        processingUserIds.delete(userId);
-        setIsSyncing(false);
-        navigate(ROUTES.profile);
-      }, 100);
+      console.log('? Authentication flow complete, navigating...');
+      completeAuthFlow(userId);
 
     } catch (error: any) {
-      console.error('❌ Authentication flow failed:', error);
+      console.error('? Authentication flow failed:', error);
       toast.error(error.message || 'Setup failed. Please try again.');
       setIsSyncing(false);
       setIsCreatingMovementWallet(false);
+      setIsCreatingSolanaWallet(false);
       processingUserIds.delete(userId);
+    } finally {
+      if (completionTimerRef.current) {
+        window.clearTimeout(completionTimerRef.current);
+        completionTimerRef.current = null;
+      }
     }
   };
 
@@ -210,7 +241,10 @@ export const PrivyLoginPage: React.FC = () => {
       console.log('🔗 Calling backend sync...');
       const response = await axios.post(
         `${backendUrl}/api/v1/auth/privy/sync`,
-        { privyToken },
+        {
+          privyToken,
+          referralCode: getStoredCreatorReferralCode() || undefined,
+        },
         { 
           headers: { 'Content-Type': 'application/json' },
           timeout: 30000 

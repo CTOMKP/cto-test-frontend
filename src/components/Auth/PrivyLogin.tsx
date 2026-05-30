@@ -3,6 +3,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { privyService } from '../../services/privyService';
+import { getStoredCreatorReferralCode } from '../../lib/creatorReferral';
 import { ROUTES } from '../../utils/constants';
 
 export const PrivyLogin: React.FC = () => {
@@ -29,7 +30,7 @@ export const PrivyLogin: React.FC = () => {
       }
 
       // Sync with CTO backend
-      const result = await privyService.syncUser(privyToken);
+      const result = await privyService.syncUser(privyToken, getStoredCreatorReferralCode());
 
       toast.dismiss();
       toast.success('Successfully authenticated!');

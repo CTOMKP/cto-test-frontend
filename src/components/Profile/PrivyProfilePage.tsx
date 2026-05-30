@@ -14,6 +14,7 @@ import NotificationsBell from '../Notifications/NotificationsBell';
 import MessagesBell from '../Messages/MessagesBell';
 import xpService from '../../services/xpService';
 import RewardProgressCard from './RewardProgressCard';
+import { CreatorProgramSection } from './CreatorProgramSection';
 import { RewardProgress } from '../../types/auth.types';
 import supportTicketService, { SupportTicket } from '../../services/supportTicketService';
 
@@ -726,6 +727,10 @@ export const PrivyProfilePage: React.FC = () => {
         />
 
         <RewardProgressCard rewards={rewards} className="mb-6" />
+
+        <div className="mb-6">
+          <CreatorProgramSection />
+        </div>
 
         {/* Profile Tabs */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
