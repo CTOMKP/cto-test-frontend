@@ -133,8 +133,15 @@ export default function Step3Roadmap({
         }
       } catch (txError: any) {
         console.error('Transaction failed:', txError);
-        const errorMsg = txError?.message || 'Transaction cancelled or failed';
-        toast.error(errorMsg);
+        const rawMessage = txError?.response?.data?.message || txError?.message || 'Transaction cancelled or failed';
+        const normalizedMessage = String(rawMessage);
+        if (normalizedMessage.includes('no record of a prior credit')) {
+          toast.error('Your Movement wallet needs a prior credit/faucet top-up before it can pay for this listing.');
+        } else if (normalizedMessage.toLowerCase().includes('simulation failed')) {
+          toast.error('Movement transaction simulation failed. Check that the wallet has MOVE/USDC and is activated on-chain.');
+        } else {
+          toast.error(normalizedMessage);
+        }
         setPaymentId(null);
         return false;
       }
@@ -287,6 +294,5 @@ export default function Step3Roadmap({
     </div>
   );
 }
-
 
 

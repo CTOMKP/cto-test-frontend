@@ -200,7 +200,8 @@ export default function Step2Details({
       toast.success('Draft saved successfully');
       setCurrentStep(3);
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to save draft');
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to save draft';
+      toast.error(errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -424,6 +425,5 @@ export default function Step2Details({
     </div>
   );
 }
-
 
 

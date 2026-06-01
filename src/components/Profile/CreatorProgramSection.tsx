@@ -21,6 +21,20 @@ const emptyStats = {
   nextTierTarget: null as number | null,
 };
 
+function buildLocalReferralLink(referralCode: string, fallbackLink: string) {
+  if (typeof window === 'undefined') return fallbackLink;
+
+  const { hostname, origin } = window.location;
+  const isLocalHost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname.endsWith('.local');
+
+  if (!isLocalHost || !referralCode) return fallbackLink;
+  return `${origin}/?ref=${referralCode}`;
+}
+
 export const CreatorProgramSection: React.FC = () => {
   const [data, setData] = useState<CreatorDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +66,7 @@ export const CreatorProgramSection: React.FC = () => {
   const referrals = data?.referrals ?? [];
   const earnings = data?.earnings ?? [];
   const payouts = data?.payouts ?? [];
-  const referralLink = account?.referralLink || '';
+  const referralLink = buildLocalReferralLink(account?.referralCode || '', account?.referralLink || '');
   const nextTierLabel = useMemo(() => {
     if (!stats.nextTierTarget) return 'Top tier reached';
     return `Next tier at ${stats.nextTierTarget} active referrals`;

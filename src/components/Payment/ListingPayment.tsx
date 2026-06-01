@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
+import {
+  useWallets as useSolanaWallets,
+  useCreateWallet as useCreateSolanaWallet,
+  useSignTransaction,
+} from '@privy-io/react-auth/solana';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { privyService } from '../../services/privyService';
 import { movementPaymentService } from '../../services/movementPaymentService';
@@ -27,7 +32,9 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 }) => {
   const navigate = useNavigate();
   const { authenticated, user } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets: solanaWallets } = useSolanaWallets();
+  const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
+  const { signTransaction: signSolanaTransaction } = useSignTransaction();
   const { signRawHash } = useSignRawHash();
   const [loading, setLoading] = useState(false);
   const [paymentId, setPaymentId] = useState<string | null>(null);
@@ -43,19 +50,16 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
   const isSolana = paymentChain === 'SOLANA';
   const solanaWallet = useMemo(() => {
     const candidate =
-      wallets.find((w) => (w as any).chainType === 'solana') ||
-      wallets.find((w) => w.chainId === 'solana:mainnet' || w.chainId === 'solana:devnet') ||
-      wallets.find((w) => w.walletClientType === 'solana' || (w as any).coinType === 501) ||
-      wallets.find((w) => {
+      solanaWallets.find((w) => (w as any).chainType === 'solana') ||
+      solanaWallets.find((w) => (w as any).chainId === 'solana:mainnet' || (w as any).chainId === 'solana:devnet') ||
+      solanaWallets.find((w) => (w as any).walletClientType === 'solana' || (w as any).coinType === 501) ||
+      solanaWallets.find((w) => {
         const addr = w.address || '';
         return addr.length >= 32 && addr.length <= 44 && !addr.startsWith('0x');
       });
     if (!candidate?.address) return null;
-    const canSign =
-      ('signTransaction' in candidate && typeof (candidate as any).signTransaction === 'function') ||
-      typeof (candidate as any).provider?.signTransaction === 'function';
-    return canSign ? candidate : null;
-  }, [wallets]);
+    return candidate;
+  }, [solanaWallets]);
 
   useEffect(() => {
     if (!isSolana || !solanaWallet?.address) return;
@@ -74,6 +78,38 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
       throw new Error('No Solana wallet found. Please enable Solana in Privy and connect a Solana wallet.');
     }
     return solanaWallet;
+  };
+
+  const ensureSolanaSignerWallet = async () => {
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return getSolanaWallet();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+
+    const hasLinkedSolana = !!(user?.linkedAccounts || []).find(
+      (a: any) => a.chainType === 'solana' || a.walletClientType === 'solana'
+    );
+    if (!hasLinkedSolana) {
+      try {
+        await createSolanaWallet();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } catch {
+        // continue and retry detection
+      }
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return getSolanaWallet();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+
+    return getSolanaWallet();
   };
 
   const decodeBase64 = (base64: string) => {
@@ -102,11 +138,26 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         let solanaWallet;
         try {
-          solanaWallet = getSolanaWallet();
+          solanaWallet = await ensureSolanaSignerWallet();
         } catch (walletError: any) {
           toast.error(walletError?.message || 'No Solana wallet found.');
           setLoading(false);
           return;
+        }
+
+        try {
+          const balance = await solanaWalletService.getBalance(solanaWallet.address);
+          setSolanaAddress(solanaWallet.address);
+          setSolanaBalance(balance.sol);
+          if (!Number.isFinite(balance.sol) || balance.sol < 0.002) {
+            toast.error(
+              `Your Solana wallet needs a little SOL for gas before you can pay. Current balance: ${balance.sol.toFixed(4)} SOL.`
+            );
+            setLoading(false);
+            return;
+          }
+        } catch (balanceError) {
+          console.warn('Could not preflight Solana balance check', balanceError);
         }
 
         const paymentResult = await solanaPaymentService.createListingPayment(listingId);
@@ -123,33 +174,20 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
           throw new Error('Transaction data missing');
         }
 
-        let signedTx: any;
         const txBytes = decodeBase64(txBase64);
-        try {
-          const versioned = VersionedTransaction.deserialize(txBytes);
-          if ('signTransaction' in solanaWallet && typeof (solanaWallet as any).signTransaction === 'function') {
-            signedTx = await (solanaWallet as any).signTransaction(versioned);
-          } else if ((solanaWallet as any).provider?.signTransaction) {
-            signedTx = await (solanaWallet as any).provider.signTransaction(versioned);
-          } else {
-            throw new Error('Solana wallet signing not available.');
-          }
-        } catch {
-          const legacy = Transaction.from(txBytes);
-          if ('signTransaction' in solanaWallet && typeof (solanaWallet as any).signTransaction === 'function') {
-            signedTx = await (solanaWallet as any).signTransaction(legacy);
-          } else if ((solanaWallet as any).provider?.signTransaction) {
-            signedTx = await (solanaWallet as any).provider.signTransaction(legacy);
-          } else {
-            throw new Error('Solana wallet signing not available.');
-          }
-        }
 
         const connection = new Connection(
           process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
           'confirmed'
         );
-        const raw = signedTx.serialize();
+        const rpcUrl = process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const signingChain = rpcUrl.includes('devnet') ? 'solana:devnet' : 'solana:mainnet';
+        const signedResult = await signSolanaTransaction({
+          transaction: txBytes,
+          wallet: solanaWallet as any,
+          chain: signingChain as any,
+        });
+        const raw = Buffer.from(signedResult.signedTransaction);
         const txHash = await connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
         await connection.confirmTransaction(txHash, 'confirmed');
 
@@ -416,20 +454,21 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
                   value="SOLANA"
                   checked={paymentChain === 'SOLANA'}
                   onChange={() => setPaymentChain('SOLANA')}
-                  disabled={loading || !solanaWallet}
+                  disabled={loading}
                 />
                 Fund with USDC (Solana)
               </label>
-              {!solanaWallet && (
-                <p className="text-xs text-amber-700 mt-2">
-                  Solana payment unavailable for this user session. Reconnect Privy with Solana enabled or use USDC.e.
+              {isSolana && (
+                <p className="mt-3 text-xs text-gray-500">
+                  Solana payments need a little SOL for network fees in addition to USDC.
+                  {typeof solanaBalance === 'number' ? ` Current SOL balance: ${solanaBalance.toFixed(4)}.` : ''}
                 </p>
               )}
             </div>
 
             <button
               onClick={handlePayment}
-              disabled={loading || (isSolana && !solanaWallet)}
+              disabled={loading}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
