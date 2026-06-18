@@ -32,6 +32,7 @@ type PricingRow = {
 
 type AdDraft = {
   postType: PostType;
+  durationMode: 'SINGULAR' | 'RECURRING';
   category: string;
   subCategory: string;
   projectName: string;
@@ -81,6 +82,7 @@ const SUBCATEGORY_MAP: Record<string, string[]> = {
 
 const DEFAULT_DRAFT: AdDraft = {
   postType: 'LOOKING_FOR',
+  durationMode: 'SINGULAR',
   category: '',
   subCategory: '',
   projectName: '',
@@ -269,6 +271,7 @@ export default function MarketDashboard() {
         setDraft((prev) => ({
           ...prev,
           postType: ad.postType || prev.postType,
+          durationMode: (ad.durationMode || prev.durationMode || 'SINGULAR') as AdDraft['durationMode'],
           category: ad.category || prev.category,
           subCategory: ad.subCategory || prev.subCategory,
           projectName: ad.projectName || prev.projectName,
@@ -564,6 +567,7 @@ export default function MarketDashboard() {
     const priceAmount = Number.isFinite(Number(draft.amount)) ? Number(draft.amount) : undefined;
     return {
       postType: draft.postType,
+      durationMode: draft.durationMode,
       category: draft.category,
       subCategory: draft.subCategory,
       title: draft.adTitle,
@@ -825,6 +829,10 @@ export default function MarketDashboard() {
                 const featuredCountdown = formatCountdown(ad.featuredUntil, now);
                 const spotlight = !!ad.homepageSpotlight;
                 const featured = isFeatured(ad);
+                const tierLabel = String(ad.tier || '').toUpperCase();
+                const featuredUntilLabel = ad.featuredUntil
+                  ? new Date(ad.featuredUntil).toLocaleDateString()
+                  : null;
 
                 const card = (
                   <div
@@ -848,9 +856,9 @@ export default function MarketDashboard() {
                           {expiryCountdown}
                         </span>
                       )}
-                      {featured && (
+                      {spotlight && (
                         <span className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-300">
-                          Featured
+                          Homepage Spotlight
                         </span>
                       )}
                       {featuredCountdown && (
@@ -885,7 +893,24 @@ export default function MarketDashboard() {
                       >
                         {ad.cta || ad.description || 'View details'}
                       </p>
-                      <div className="mt-auto flex flex-wrap gap-3 pt-2 text-xs text-zinc-500">
+                      <div className="mt-auto flex flex-wrap gap-2 pt-2">
+                        {tierLabel && (
+                          <span className="rounded-full border border-white/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-300">
+                            {tierLabel}
+                          </span>
+                        )}
+                        {spotlight && (
+                          <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-amber-300">
+                            Spotlight
+                          </span>
+                        )}
+                        {featured && featuredUntilLabel && (
+                          <span className="rounded-full border border-purple-400/40 bg-purple-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-purple-200">
+                            Featured Until {featuredUntilLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-3 pt-2 text-xs text-zinc-500">
                         {typeof postedDays === 'number' && <span>Posted {postedDays}d ago</span>}
                       </div>
                     </div>
@@ -1102,6 +1127,17 @@ export default function MarketDashboard() {
                         {opt.label}
                       </option>
                     ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Ad Duration</label>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
+                    value={draft.durationMode}
+                    onChange={(event) => updateDraft({ durationMode: event.target.value as AdDraft['durationMode'] })}
+                  >
+                    <option value="SINGULAR">Singular - closes after 28 days or when you close it</option>
+                    <option value="RECURRING">Recurring - stays open after payment until you close it</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -1404,6 +1440,9 @@ export default function MarketDashboard() {
                 <div className="mt-3 text-xs text-zinc-500">
                   Chain used for payment: {isSolanaPayment ? 'Solana' : 'Movement'}
                 </div>
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-zinc-300">
+                  <span className="text-zinc-500">Ad duration:</span> {draft.durationMode === 'RECURRING' ? 'Recurring' : 'Singular'}
+                </div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm">
@@ -1485,6 +1524,10 @@ export default function MarketDashboard() {
               <div className="flex items-center justify-between">
                 <span>Tier</span>
                 <span className="text-zinc-200">{draft.tier}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Ad Duration</span>
+                <span className="text-zinc-200">{draft.durationMode === 'RECURRING' ? 'Recurring' : 'Singular'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Payment</span>

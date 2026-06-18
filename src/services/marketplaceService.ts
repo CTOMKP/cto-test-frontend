@@ -46,6 +46,13 @@ export const marketplaceService = {
     return res.data?.data || res.data;
   },
 
+  async closeAd(id: string) {
+    const res = await axios.post(`${backendUrl}/api/v1/marketplace/ads/${id}/close`, {}, {
+      headers: authHeaders(),
+    });
+    return res.data?.data || res.data;
+  },
+
   async listMine() {
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/ads/mine`, {
       headers: authHeaders(),

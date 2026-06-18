@@ -482,6 +482,17 @@ export const PrivyProfilePage: React.FC = () => {
     }
   };
 
+  const handleCloseAd = async (adId: string, title: string) => {
+    if (!confirm(`Close "${title}" now? It will no longer appear publicly.`)) return;
+    try {
+      await marketplaceService.closeAd(adId);
+      toast.success('Ad closed');
+      await loadMyAds();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to close ad');
+    }
+  };
+
   const formatCompactNumber = (value?: number | null) => {
     if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
     const num = Number(value);
@@ -866,8 +877,10 @@ export const PrivyProfilePage: React.FC = () => {
                       <th className="py-3 pr-4">Status</th>
                       <th className="py-3 pr-4">Category</th>
                       <th className="py-3 pr-4">Tier</th>
+                      <th className="py-3 pr-4">Mode</th>
                       <th className="py-3 pr-4">Created</th>
                       <th className="py-3">Expires</th>
+                      <th className="py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -914,10 +927,36 @@ export const PrivyProfilePage: React.FC = () => {
                           <td className="py-4 pr-4">{ad.category}</td>
                           <td className="py-4 pr-4">{ad.tier}</td>
                           <td className="py-4 pr-4">
+                            <span
+                              className={`text-xs px-2 py-1 rounded ${
+                                ad.durationMode === 'RECURRING'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              {ad.durationMode === 'RECURRING' ? 'Recurring' : 'Singular'}
+                            </span>
+                          </td>
+                          <td className="py-4 pr-4">
                             {ad.createdAt ? new Date(ad.createdAt).toLocaleDateString() : '--'}
                           </td>
                           <td className="py-4">
-                            {ad.expiresAt ? new Date(ad.expiresAt).toLocaleDateString() : '--'}
+                            {ad.durationMode === 'RECURRING'
+                              ? 'Open'
+                              : ad.expiresAt
+                                ? new Date(ad.expiresAt).toLocaleDateString()
+                                : '--'}
+                          </td>
+                          <td className="py-4">
+                            {(ad.status === 'PUBLISHED' || ad.status === 'PENDING_APPROVAL') && (
+                              <button
+                                type="button"
+                                onClick={() => handleCloseAd(ad.id, ad.title)}
+                                className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                              >
+                                Close
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );

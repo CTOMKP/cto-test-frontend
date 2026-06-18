@@ -118,6 +118,10 @@ export const MarketplaceAdDetail: React.FC = () => {
                 <p className="text-zinc-400">Posted</p>
                 <p className="text-white">{ad.createdAt ? new Date(ad.createdAt).toLocaleDateString() : 'Recently'}</p>
               </div>
+              <div>
+                <p className="text-zinc-400">Ad Mode</p>
+                <p className="text-white">{ad.durationMode === 'RECURRING' ? 'Recurring' : 'Singular'}</p>
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
