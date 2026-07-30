@@ -17,6 +17,7 @@ import RewardProgressCard from './RewardProgressCard';
 import { CreatorProgramSection } from './CreatorProgramSection';
 import { RewardProgress } from '../../types/auth.types';
 import supportTicketService, { SupportTicket } from '../../services/supportTicketService';
+import walletSummaryService, { WalletPaidOutSummary } from '../../services/walletSummaryService';
 
 export const PrivyProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -74,8 +75,28 @@ export const PrivyProfilePage: React.FC = () => {
   const [ticketSubmitting, setTicketSubmitting] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
   const [myTickets, setMyTickets] = useState<SupportTicket[]>([]);
+  const [paidOutSummary, setPaidOutSummary] = useState<WalletPaidOutSummary | null>(null);
+  const [paidOutLoading, setPaidOutLoading] = useState(false);
+  const [paidOutError, setPaidOutError] = useState<string | null>(null);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
+
+  const loadPaidOutSummary = useCallback(async () => {
+    try {
+      setPaidOutLoading(true);
+      setPaidOutError(null);
+      const summary = await walletSummaryService.getTotalPaidOut();
+      setPaidOutSummary(summary);
+    } catch (error: any) {
+      setPaidOutError(
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to load the all-time paid-out total',
+      );
+    } finally {
+      setPaidOutLoading(false);
+    }
+  }, []);
 
   // Get Movement wallet on mount
   useEffect(() => {
@@ -104,6 +125,12 @@ export const PrivyProfilePage: React.FC = () => {
     };
     if (authenticated) loadXp();
   }, [authenticated]);
+
+  useEffect(() => {
+    if (authenticated) {
+      loadPaidOutSummary();
+    }
+  }, [authenticated, loadPaidOutSummary]);
 
   useEffect(() => {
     const fallback = user?.email?.address?.split('@')[0] || user?.wallet?.address || 'User';
@@ -724,6 +751,47 @@ export const PrivyProfilePage: React.FC = () => {
                 Logout
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* All-time wallet withdrawals */}
+        <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-gray-950 via-gray-900 to-purple-950 p-6 text-white shadow-lg">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-purple-200">
+                Total paid out
+              </p>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-bold">
+                  {paidOutLoading && !paidOutSummary
+                    ? '...'
+                    : new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                        minimumFractionDigits: 2,
+                      }).format(paidOutSummary?.totalPaidOutUsd ?? 0)}
+                </span>
+                <span className="text-sm font-semibold text-purple-200">all time</span>
+              </div>
+              <p className="mt-2 text-sm text-gray-300">
+                Completed USDC withdrawals across all of your CTO wallets.
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {paidOutSummary?.transactionCount ?? 0} completed outgoing transaction
+                {(paidOutSummary?.transactionCount ?? 0) === 1 ? '' : 's'}
+              </p>
+              {paidOutError && (
+                <p className="mt-2 text-xs text-red-300">{paidOutError}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={loadPaidOutSummary}
+              disabled={paidOutLoading}
+              className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {paidOutLoading ? 'Refreshing...' : 'Refresh total'}
+            </button>
           </div>
         </div>
 
