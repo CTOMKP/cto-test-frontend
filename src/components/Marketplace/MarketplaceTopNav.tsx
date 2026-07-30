@@ -24,7 +24,11 @@ export default function MarketplaceTopNav() {
             <span>Discover</span>
             <span>Marketplace</span>
             <span>Forum</span>
-            <span>Earn</span>
+            <a
+              href={process.env.REACT_APP_CREATOR_PROGRAM_URL || 'https://earn.ctomarketplace.com'}
+            >
+              Earn
+            </a>
           </nav>
         </div>
         <div className="flex items-center gap-3 text-xs text-zinc-400">

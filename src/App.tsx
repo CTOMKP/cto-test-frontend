@@ -27,6 +27,16 @@ import { TwoPhaseTesting } from './components/TwoPhaseTesting';
 import { useAuth } from './hooks/useAuth';
 import { ROUTES } from './utils/constants';
 
+const CREATOR_PROGRAM_URL =
+  process.env.REACT_APP_CREATOR_PROGRAM_URL || 'https://earn.ctomarketplace.com';
+
+const CreatorProgramRedirect: React.FC = () => {
+  useEffect(() => {
+    window.location.replace(CREATOR_PROGRAM_URL);
+  }, []);
+  return null;
+};
+
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -147,6 +157,7 @@ const AppContent: React.FC = () => {
         <Route path={ROUTES.login} element={<PrivyLoginPage />} />
         <Route path={ROUTES.signup} element={<PrivyLoginPage />} />
         <Route path={ROUTES.profile} element={<ProtectedRoute><PrivyProfilePage /></ProtectedRoute>} />
+        <Route path={ROUTES.creator} element={<CreatorProgramRedirect />} />
         <Route path={ROUTES.createUserListing} element={<ProtectedRoute><CreateUserListingNew /></ProtectedRoute>} />
         <Route path={ROUTES.myUserListings} element={<ProtectedRoute><MyUserListings /></ProtectedRoute>} />
         <Route path="/bridge" element={<ProtectedRoute><UserWormholeBridge /></ProtectedRoute>} />
