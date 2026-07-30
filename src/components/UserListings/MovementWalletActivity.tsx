@@ -27,10 +27,31 @@ export const MovementWalletRecentActivity: React.FC<MovementWalletRecentActivity
   transactions,
   loading,
   syncing,
-}) => (
+}) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  return (
   <>
-    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Recent Activity</h3>
-    {loading && !syncing ? (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recent Activity</h3>
+      <button
+        type="button"
+        onClick={() => setIsCollapsed((current) => !current)}
+        aria-expanded={!isCollapsed}
+        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-100"
+      >
+        {isCollapsed ? 'Show' : 'Collapse'}
+        <svg
+          className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+    </div>
+    {!isCollapsed && (loading && !syncing ? (
       <div className="flex justify-center py-4">
         <div className="animate-pulse flex space-x-2">
           <div className="h-2 w-2 bg-gray-300 rounded-full"></div>
@@ -39,9 +60,9 @@ export const MovementWalletRecentActivity: React.FC<MovementWalletRecentActivity
         </div>
       </div>
     ) : transactions.length > 0 ? (
-      <div className="space-y-3">
+      <div className="max-h-80 space-y-3 overflow-y-auto overscroll-contain pr-2">
         {transactions.map((tx) => (
-          <div key={tx.id} className="flex items-center justify-between text-sm">
+          <div key={tx.id} className="flex items-center justify-between border-b border-gray-100 pb-3 text-sm last:border-b-0 last:pb-0">
             <div className="flex items-center gap-3">
               <div className={`p-1.5 rounded-full ${
                 tx.txType === 'CREDIT' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
@@ -94,7 +115,9 @@ export const MovementWalletRecentActivity: React.FC<MovementWalletRecentActivity
                     tx.txType === 'CREDIT'
                       ? tx.fromAddress || tx.txHash
                       : tx.toAddress || tx.txHash;
-                  return `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
+                  return counterparty
+                    ? `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`
+                    : 'Unknown';
                 })()}
               </p>
               <a 
@@ -117,9 +140,10 @@ export const MovementWalletRecentActivity: React.FC<MovementWalletRecentActivity
       </div>
     ) : (
       <p className="text-xs text-gray-400 text-center py-4 italic">No transactions detected yet.</p>
-    )}
+    ))}
   </>
-);
+  );
+};
 
 export const MovementWalletActivity: React.FC<MovementWalletActivityProps> = ({
   mode = 'full',
