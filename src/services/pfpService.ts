@@ -16,6 +16,14 @@ export interface PFPCard {
   traits?: Record<string, unknown>;
 }
 
+export interface MascotAssignment {
+  mascotKey: string;
+  assetVersion: 'v1' | 'v2';
+  assetPath: string;
+  assignedAt?: string;
+  catalogSize?: number;
+}
+
 class PFPService {
 
   /**
@@ -55,6 +63,46 @@ class PFPService {
       // Return default cards as fallback - don't throw error, just use defaults
       return this.getDefaultCards();
     }
+  }
+
+  async getOrCreateMascotAssignment(): Promise<MascotAssignment> {
+    const token = localStorage.getItem('cto_auth_token');
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+
+    const response = await axios.post(
+      API_BASE + '/api/v1/pfp/assignment',
+      {},
+      {
+        headers: {
+          Authorization: 'Bearer ' + token,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    const data = response.data?.data || response.data;
+    const mascotKey = typeof data?.mascotKey === 'string' ? data.mascotKey.trim() : '';
+    const assetVersion = data?.assetVersion === 'v2' ? 'v2' : 'v1';
+    const providedAssetPath = typeof data?.assetPath === 'string' ? data.assetPath.trim() : '';
+    const assetPath =
+      providedAssetPath ||
+      (assetVersion === 'v1' ? 'mascots/TRAITS/' + mascotKey + '.png' : '');
+
+    if (!mascotKey || !/^[A-Za-z0-9._-]+$/.test(mascotKey)) {
+      throw new Error('Backend returned an invalid mascot assignment');
+    }
+    if (!assetPath || !/^mascots\/[A-Za-z0-9._/-]+$/.test(assetPath)) {
+      throw new Error('Backend returned an invalid mascot asset path');
+    }
+
+    return {
+      mascotKey,
+      assetVersion,
+      assetPath,
+      assignedAt: typeof data?.assignedAt === 'string' ? data.assignedAt : undefined,
+      catalogSize: typeof data?.catalogSize === 'number' ? data.catalogSize : undefined,
+    };
   }
 
   /**
@@ -311,5 +359,3 @@ class PFPService {
 }
 
 export const pfpService = new PFPService();
-
-

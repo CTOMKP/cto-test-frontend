@@ -56,11 +56,12 @@ const TRAIT_INFO: Record<TraitType, { name: string; rarity: Rarity; description:
 
 interface MascotCard {
   id: string;
-  trait: TraitType;
+  trait: string;
   name: string;
   rarity: Rarity;
   description: string;
-  compositeImage: string; // Data URL of the layered image
+  compositeImage: string;
+  assetVersion: 'v1' | 'v2';
 }
 
 // Generate composite image from layers
@@ -140,51 +141,37 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
-  // Generate mascot based on wallet address + timestamp + random
+  // Retrieve the persistent, balanced assignment from the shared backend.
   const generateMascot = async (): Promise<MascotCard> => {
-    // Get wallet address from localStorage (works with both Privy and Circle wallets)
-    const walletAddress = 
-      (typeof window !== 'undefined' ? localStorage.getItem('cto_wallet_address') : null) ||
-      (typeof window !== 'undefined' ? localStorage.getItem('cto_user_email') : null) ||
-      (typeof window !== 'undefined' ? localStorage.getItem('cto_user_id') : null) ||
-      'demo';
-    
-    const timestamp = Date.now();
-    const random = Math.random() * 1000000;
-    const seed = `${walletAddress}_${timestamp}_${random}`;
-    const seedHash = seed.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
+    const assignment = await pfpService.getOrCreateMascotAssignment();
 
-    // All available traits
-    const allTraits: TraitType[] = Object.keys(TRAIT_INFO) as TraitType[];
-    
-    // Select trait based on weighted rarity
-    const rarityRoll = Math.abs(seedHash) % 100;
-    let targetRarity: Rarity;
-    if (rarityRoll < 40) targetRarity = 'Common'; // 40%
-    else if (rarityRoll < 65) targetRarity = 'Uncommon'; // 25%
-    else if (rarityRoll < 82) targetRarity = 'Rare'; // 17%
-    else if (rarityRoll < 94) targetRarity = 'Epic'; // 12%
-    else targetRarity = 'Legendary'; // 6%
+    if (assignment.assetVersion === 'v2') {
+      return {
+        id: assignment.mascotKey,
+        trait: assignment.mascotKey,
+        name: 'Mascot #' + assignment.mascotKey.replace(/^V2_/, ''),
+        rarity: 'Common',
+        description: 'Your CTO Marketplace mascot',
+        compositeImage: getMascotImageUrl(assignment.assetPath),
+        assetVersion: 'v2',
+      };
+    }
 
-    // Filter traits by rarity
-    const traitsOfRarity = allTraits.filter(t => TRAIT_INFO[t].rarity === targetRarity);
-    const selectedTrait = traitsOfRarity[Math.abs(seedHash >> 2) % traitsOfRarity.length];
-    
+    const selectedTrait = assignment.mascotKey as TraitType;
     const traitInfo = TRAIT_INFO[selectedTrait];
-    
-    // Generate composite image
+    if (!traitInfo) {
+      throw new Error('Legacy mascot assignment is not available in this frontend');
+    }
     const compositeImage = await createCompositeImage(selectedTrait);
 
     return {
-      id: `mascot_${Date.now()}`,
+      id: assignment.mascotKey,
       trait: selectedTrait,
       name: traitInfo.name,
       rarity: traitInfo.rarity,
       description: traitInfo.description,
       compositeImage,
+      assetVersion: 'v1',
     };
   };
 
@@ -223,20 +210,21 @@ export const CardReveal: React.FC<CardRevealProps> = ({ onClose }) => {
     
     setIsSaving(true);
     try {
-      // Convert data URL to File
-      const dataUrl = mascotCard.compositeImage;
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      const file = new File([blob], `mascot-${mascotCard.id}.png`, { type: 'image/png' });
-
       // Get user ID from localStorage
       const userId = getUserId();
       if (!userId) {
         throw new Error('User ID not found. Please ensure you are logged in and try again.');
       }
 
-      // Upload and save the PFP
-      const result = await pfpService.savePFP(file, userId);
+      // Finished v2 images already live in S3 and are saved by URL. Only legacy
+      // layered mascots need to be converted and uploaded as a new file.
+      let imageToSave: File | string = mascotCard.compositeImage;
+      if (mascotCard.assetVersion === 'v1') {
+        const response = await fetch(mascotCard.compositeImage);
+        const blob = await response.blob();
+        imageToSave = new File([blob], 'mascot-' + mascotCard.id + '.png', { type: 'image/png' });
+      }
+      const result = await pfpService.savePFP(imageToSave, userId);
       
       if (result.success) {
         setIsSaved(true);
