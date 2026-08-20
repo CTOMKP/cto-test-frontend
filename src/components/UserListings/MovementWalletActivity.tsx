@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { movementWalletService, WalletBalance, WalletTransaction } from '../../services/movementWalletService';
 import { useAuth } from '../../hooks/useAuth';
 import { authService } from '../../services/authService';
@@ -10,6 +10,7 @@ import { AccountRecoveryHelper } from '../AccountRecoveryHelper';
 
 type MovementWalletActivityProps = {
   mode?: 'full' | 'history';
+  extraTransactions?: WalletTransaction[];
   onActivityUpdate?: (state: {
     transactions: WalletTransaction[];
     loading: boolean;
@@ -147,6 +148,7 @@ export const MovementWalletRecentActivity: React.FC<MovementWalletRecentActivity
 
 export const MovementWalletActivity: React.FC<MovementWalletActivityProps> = ({
   mode = 'full',
+  extraTransactions = [],
   onActivityUpdate,
 }) => {
   const { user: dbUser } = useAuth();
@@ -392,6 +394,15 @@ export const MovementWalletActivity: React.FC<MovementWalletActivityProps> = ({
     }
   };
 
+  const mergedTransactions = useMemo(
+    () =>
+      [...transactions, ...extraTransactions]
+        .filter((tx) => !!tx?.txHash)
+        .filter((tx, index, list) => list.findIndex((it) => it.txHash === tx.txHash) === index)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [transactions, extraTransactions]
+  );
+
   // INITIAL SYNC ON MOUNT
   useEffect(() => {
     if (activeWalletId) {
@@ -402,8 +413,8 @@ export const MovementWalletActivity: React.FC<MovementWalletActivityProps> = ({
   }, [activeWalletId]);
 
   useEffect(() => {
-    onActivityUpdate?.({ transactions, loading, syncing });
-  }, [transactions, loading, syncing, onActivityUpdate]);
+    onActivityUpdate?.({ transactions: mergedTransactions, loading, syncing });
+  }, [mergedTransactions, loading, syncing, onActivityUpdate]);
 
   // PERIODIC BACKGROUND POLLING (Every 60 seconds to avoid rate limits)
   useEffect(() => {
@@ -559,7 +570,7 @@ export const MovementWalletActivity: React.FC<MovementWalletActivityProps> = ({
 
       <div className="p-4">
         <MovementWalletRecentActivity
-          transactions={transactions}
+          transactions={mergedTransactions}
           loading={loading}
           syncing={syncing}
         />

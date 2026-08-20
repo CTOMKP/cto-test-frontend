@@ -236,10 +236,10 @@ const App: React.FC = () => {
           loginMethods: ['email', 'wallet', 'google'],
           embeddedWallets: {
             ethereum: {
-              createOnLogin: 'all-users',
+              createOnLogin: 'off',
             },
             solana: {
-              createOnLogin: 'all-users',
+              createOnLogin: 'off',
             },
           },
           solana: {

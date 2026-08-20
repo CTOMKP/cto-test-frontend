@@ -3,7 +3,7 @@ import axios from 'axios';
 export interface SupportTicketPayload {
   subject: string;
   message: string;
-  category?: 'GENERAL' | 'SWAP' | 'WALLET' | 'PAYMENT' | 'LISTING' | 'ADS' | 'ACCOUNT' | 'OTHER';
+  category?: 'GENERAL' | 'SWAP' | 'WALLET' | 'PAYMENT' | 'LISTING' | 'ADS' | 'ACCOUNT' | 'FAUCET' | 'OTHER';
   priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 }
 
@@ -60,6 +60,21 @@ const supportTicketService = {
       }
     );
     return unwrap<SupportTicket[]>(res.data) || [];
+  },
+
+  async applySolanaUsdcFaucet(payload: { walletAddress: string; reason?: string }) {
+    const token = localStorage.getItem('cto_auth_token');
+    const res = await axios.post(
+      `${backendUrl}/api/v1/support/faucet/solana-usdc`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return unwrap<any>(res.data);
   },
 };
 

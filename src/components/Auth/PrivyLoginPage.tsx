@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePrivy } from '@privy-io/react-auth';
+import {
+  useCreateWallet as useCreateEthereumWallet,
+  usePrivy,
+  useWallets as useEthereumWallets,
+} from '@privy-io/react-auth';
 import { useCreateWallet as useCreateCurveWallet } from '@privy-io/react-auth/extended-chains';
 import { useCreateWallet as useCreateSolanaWallet, useWallets as useSolanaWallets } from '@privy-io/react-auth/solana';
 import axios from 'axios';
@@ -18,10 +22,13 @@ const processingUserIds = new Set<string>();
 export const PrivyLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, authenticated, user, ready, getAccessToken, logout } = usePrivy();
+  const { createWallet: createEthereumWallet } = useCreateEthereumWallet();
+  const { wallets: ethereumSignerWallets } = useEthereumWallets();
   const { createWallet: createCurveWallet } = useCreateCurveWallet();
   const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
   const { wallets: solanaSignerWallets } = useSolanaWallets();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCreatingEthereumWallet, setIsCreatingEthereumWallet] = useState(false);
   const [isCreatingMovementWallet, setIsCreatingMovementWallet] = useState(false);
   const [isCreatingSolanaWallet, setIsCreatingSolanaWallet] = useState(false);
   const [syncProgress, setSyncProgress] = useState('');
@@ -49,6 +56,7 @@ export const PrivyLoginPage: React.FC = () => {
 
     setSyncProgress('Redirecting to dashboard...');
     setIsSyncing(false);
+    setIsCreatingEthereumWallet(false);
     setIsCreatingMovementWallet(false);
     setIsCreatingSolanaWallet(false);
     processingUserIds.delete(userId);
@@ -73,7 +81,7 @@ export const PrivyLoginPage: React.FC = () => {
   // Sync with backend after Privy authentication
   useEffect(() => {
     // Match main frontend EXACTLY: same guards
-    if (!authenticated || !user || isSyncing || isCreatingMovementWallet || isCreatingSolanaWallet) {
+    if (!authenticated || !user || isSyncing || isCreatingEthereumWallet || isCreatingMovementWallet || isCreatingSolanaWallet) {
       return;
     }
 
@@ -85,21 +93,12 @@ export const PrivyLoginPage: React.FC = () => {
       return;
     }
     
-    // Check if we've already synced for this user in this session
-    const existingToken = localStorage.getItem('cto_auth_token');
-    const existingUserId = localStorage.getItem('cto_user_id');
-    if (existingToken && existingUserId === userId) {
-      console.log('✅ User already synced, navigating to profile');
-      navigate(ROUTES.profile);
-      return;
-    }
-
     // Mark as processing IMMEDIATELY
     processingUserIds.add(userId);
     handleMovementWalletAndSync(userId);
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, user?.id, solanaSignerWallets?.length]);
+  }, [authenticated, user?.id, ethereumSignerWallets?.length, solanaSignerWallets?.length]);
 
   // Wait for Privy to fully load linkedAccounts (with retries)
   const waitForPrivyAccounts = async (maxRetries = 10, delayMs = 500): Promise<boolean> => {
@@ -140,6 +139,38 @@ export const PrivyLoginPage: React.FC = () => {
       
       if (!syncResult) {
         throw new Error('Initial backend synchronization failed');
+      }
+
+      // Authentication and the backend session now exist. Provision Ethereum
+      // independently so a slow wallet request cannot prevent account creation.
+      const hasEthereumWallet = syncResult.wallets?.some(
+        (w: any) => (w.blockchain === 'ETHEREUM' || w.chainType === 'ethereum') &&
+          (w.walletClientType === 'privy' || w.isEmbedded === true)
+      ) || userRef.current?.linkedAccounts?.some(
+        (a: any) => a.chainType === 'ethereum' && a.walletClientType === 'privy'
+      ) || ethereumSignerWallets.some((wallet: any) =>
+        wallet.walletClientType === 'privy'
+      );
+
+      if (!hasEthereumWallet) {
+        setSyncProgress('Creating Ethereum wallet...');
+        setIsCreatingEthereumWallet(true);
+        try {
+          const walletCreationPromise = createEthereumWallet();
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            window.setTimeout(() => reject(new Error('Ethereum wallet creation timed out')), 20000)
+          );
+          await Promise.race([walletCreationPromise, timeoutPromise]);
+          await new Promise(resolve => window.setTimeout(resolve, 1500));
+          await syncWithBackend();
+        } catch (ethereumError) {
+          console.warn('Ethereum wallet setup is delayed:', ethereumError);
+          window.setTimeout(() => {
+            void syncWithBackend();
+          }, 10000);
+        } finally {
+          setIsCreatingEthereumWallet(false);
+        }
       }
 
       // Step 3: Check if user has Movement wallet in backend or Privy
@@ -190,21 +221,30 @@ export const PrivyLoginPage: React.FC = () => {
 
       // Step 5: Ensure Solana wallet exists (for Solana payments)
       const hasSolWallet = syncResult.wallets?.some(
-        (w: any) => w.blockchain === 'SOLANA' || w.chainType === 'solana'
+        (w: any) => (w.blockchain === 'SOLANA' || w.chainType === 'solana') &&
+          (w.walletClientType === 'privy' || w.isEmbedded === true)
       ) || userRef.current?.linkedAccounts?.some(
-        (a: any) => a.chainType === 'solana' || a.walletClientType === 'solana'
-      ) || (solanaSignerWallets?.length || 0) > 0;
+        (a: any) => a.chainType === 'solana' && a.walletClientType === 'privy'
+      ) || solanaSignerWallets.some((wallet: any) =>
+        wallet.walletClientType === 'privy' || wallet.standardWallet?.name === 'Privy'
+      );
 
       if (!hasSolWallet) {
         setSyncProgress('Creating Solana wallet...');
         setIsCreatingSolanaWallet(true);
         try {
-          await createSolanaWallet();
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          const walletCreationPromise = createSolanaWallet();
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            window.setTimeout(() => reject(new Error('Solana wallet creation timed out')), 20000)
+          );
+          await Promise.race([walletCreationPromise, timeoutPromise]);
+          await new Promise(resolve => window.setTimeout(resolve, 1500));
           await syncWithBackend();
         } catch (solError: any) {
-          console.warn('Solana wallet setup failed:', solError);
-          await syncWithBackend();
+          console.warn('Solana wallet setup is delayed:', solError);
+          window.setTimeout(() => {
+            void syncWithBackend();
+          }, 10000);
         } finally {
           setIsCreatingSolanaWallet(false);
         }
@@ -218,6 +258,7 @@ export const PrivyLoginPage: React.FC = () => {
       console.error('? Authentication flow failed:', error);
       toast.error(error.message || 'Setup failed. Please try again.');
       setIsSyncing(false);
+      setIsCreatingEthereumWallet(false);
       setIsCreatingMovementWallet(false);
       setIsCreatingSolanaWallet(false);
       processingUserIds.delete(userId);
@@ -407,18 +448,28 @@ export const PrivyLoginPage: React.FC = () => {
     );
   }
 
-  if (isSyncing || isCreatingMovementWallet || isCreatingSolanaWallet) {
+  if (isSyncing || isCreatingEthereumWallet || isCreatingMovementWallet || isCreatingSolanaWallet) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center p-8 max-w-md w-full bg-white rounded-2xl shadow-xl">
           <div className="animate-spin rounded-full h-24 w-24 border-b-2 border-purple-600 mx-auto mb-6"></div>
           <p className="text-2xl font-bold text-gray-900 mb-2">
-            {isCreatingMovementWallet ? 'Creating Movement Wallet...' : isCreatingSolanaWallet ? 'Creating Solana Wallet...' : 'Syncing Profile...'}
+            {isCreatingEthereumWallet
+              ? 'Creating Ethereum Wallet...'
+              : isCreatingMovementWallet
+                ? 'Creating Movement Wallet...'
+                : isCreatingSolanaWallet
+                  ? 'Creating Solana Wallet...'
+                  : 'Syncing Profile...'}
           </p>
           <p className="text-gray-600 mb-4">
-            {isCreatingMovementWallet 
-              ? 'Setting up your Movement Network wallet. Please do not close this window.' 
-              : 'Syncing your wallets and profile with our servers.'}
+            {isCreatingEthereumWallet
+              ? 'Setting up your Ethereum wallet.'
+              : isCreatingMovementWallet
+                ? 'Setting up your Movement Network wallet.'
+                : isCreatingSolanaWallet
+                  ? 'Setting up your Solana wallet.'
+                  : 'Syncing your wallets and profile with our servers.'}
           </p>
           {syncProgress && (
             <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium animate-pulse">

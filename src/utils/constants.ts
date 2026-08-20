@@ -47,6 +47,7 @@ export const ROUTES = {
   signup: '/signup',
   forgotPassword: '/forgot-password',
   profile: '/profile',
+  creator: '/creator',
   createUserListing: '/user-listings/create',
   myUserListings: '/user-listings/mine',
   admin: '/admin',
