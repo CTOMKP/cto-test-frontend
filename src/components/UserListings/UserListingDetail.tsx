@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import { useParams, Link } from 'react-router-dom';
 import userListingsService from '../../services/userListingsService';
+import favoritesService from '../../services/favoritesService';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl } from '../../utils/helpers';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
@@ -44,6 +46,58 @@ export const UserListingDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [smallBanner, setSmallBanner] = useState(false);
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  const [favoritePending, setFavoritePending] = useState(false);
+
+  useEffect(() => {
+    if (!id || !localStorage.getItem('cto_auth_token')) {
+      setFavoriteId(null);
+      return;
+    }
+
+    let active = true;
+    favoritesService.list('USER_LISTING')
+      .then((response) => {
+        if (!active) return;
+        const favorite = response.items.find((item) => item.targetKey === id);
+        setFavoriteId(favorite?.id || null);
+      })
+      .catch(() => {
+        if (active) setFavoriteId(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  const toggleWatchlist = async () => {
+    if (!localStorage.getItem('cto_auth_token')) {
+      toast.error('Please sign in to use your watchlist');
+      return;
+    }
+    if (!id || favoritePending) return;
+
+    setFavoritePending(true);
+    try {
+      if (favoriteId) {
+        await favoritesService.remove(favoriteId);
+        setFavoriteId(null);
+        toast.success('Removed from watchlist');
+      } else {
+        const response = await favoritesService.add({
+          targetType: 'USER_LISTING',
+          targetId: id,
+        });
+        setFavoriteId(response.favorite.id);
+        toast.success('Added to watchlist');
+      }
+    } catch {
+      toast.error('Unable to update your watchlist');
+    } finally {
+      setFavoritePending(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -154,7 +208,20 @@ export const UserListingDetail: React.FC = () => {
       <header className="bg-white border-b">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <Link className="px-3 py-1 border rounded" to={ROUTES.home}>Back</Link>
-          <div className="text-xs text-gray-500">{data.status}</div>
+          <div className="flex items-center gap-2">
+            {data.status === 'PUBLISHED' && (
+              <button
+                type="button"
+                onClick={() => void toggleWatchlist()}
+                disabled={favoritePending}
+                className="px-3 py-1 border rounded hover:bg-gray-100 transition-colors"
+                aria-pressed={Boolean(favoriteId)}
+              >
+                {favoritePending ? 'Updating...' : favoriteId ? 'Remove from watchlist' : 'Add to watchlist'}
+              </button>
+            )}
+            <div className="text-xs text-gray-500">{data.status}</div>
+          </div>
         </div>
       </header>
 

@@ -990,12 +990,14 @@ export const ListingsPage: React.FC = () => {
                                     void toggleFavorite(it);
                                   }}
                                   disabled={favoritePending.has(favoriteKey(it.chain, it.contractAddress))}
-                                  className={favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'text-amber-300' : 'text-gray-500 hover:text-gray-300'}
-                                  title="Toggle watchlist"
+                                  className={favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'text-amber-300' : 'text-gray-300 hover:text-white'}
+                                  title={favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'Remove from watchlist' : 'Add to watchlist'}
+                                  aria-label={favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'Remove from watchlist' : 'Add to watchlist'}
+                                  aria-pressed={favoriteIds.has(favoriteKey(it.chain, it.contractAddress))}
                                 >
                                   {favoritePending.has(favoriteKey(it.chain, it.contractAddress))
                                     ? '...'
-                                    : favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'ON' : 'ADD'}
+                                    : favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'In watchlist' : 'Add to watchlist'}
                                 </button>
                                 <span className="text-sm font-bold text-white uppercase">{it.symbol || 'Unknown'}</span>
                                 {isApproved(it) && (
@@ -1188,12 +1190,14 @@ export const ListingsPage: React.FC = () => {
                               void toggleUserListingFavorite(ul);
                             }}
                             disabled={favoritePending.has(userListingFavoriteKey(ul.id))}
-                            className={favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'text-amber-300' : 'text-gray-500 hover:text-gray-300'}
-                            title="Toggle watchlist"
+                            className={favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'text-amber-300' : 'text-gray-300 hover:text-white'}
+                            title={favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'Remove from watchlist' : 'Add to watchlist'}
+                            aria-label={favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'Remove from watchlist' : 'Add to watchlist'}
+                            aria-pressed={favoriteIds.has(userListingFavoriteKey(ul.id))}
                           >
                             {favoritePending.has(userListingFavoriteKey(ul.id))
                               ? '...'
-                              : favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'ON' : 'ADD'}
+                              : favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'In watchlist' : 'Add to watchlist'}
                           </button>
                           <div className="text-[10px] px-2 py-0.5 rounded bg-purple-900 text-purple-200 border border-purple-700">User Listing</div>
                         </div>

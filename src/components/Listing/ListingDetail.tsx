@@ -11,6 +11,7 @@ import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl, formatAddress } from '../../utils/helpers';
 import { enrichMarket } from '../../services/marketEnrichment';
 import listingService, { TradeEvent } from '../../services/listingService';
+import favoritesService from '../../services/favoritesService';
 import { TokenAnalytics } from './TokenAnalytics';
 import { useWalletRouter, getWalletAddressForChain, ChainType } from '../../utils/walletRouter';
 
@@ -67,6 +68,63 @@ export const ListingDetail: React.FC = () => {
     canTrade: boolean;
     reason: string | null;
   }>({ checking: false, canTrade: true, reason: null });
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  const [favoritePending, setFavoritePending] = useState(false);
+  const tokenFavoriteKey = useMemo(() => {
+    if (!contractAddress) return null;
+    return `${String(data?.chain || 'SOLANA').trim().toUpperCase()}:${contractAddress.trim()}`;
+  }, [contractAddress, data?.chain]);
+
+  useEffect(() => {
+    if (!localStorage.getItem('cto_auth_token') || !tokenFavoriteKey) {
+      setFavoriteId(null);
+      return;
+    }
+
+    let active = true;
+    favoritesService.list('TOKEN')
+      .then((response) => {
+        if (!active) return;
+        const favorite = response.items.find((item) => item.targetKey === tokenFavoriteKey);
+        setFavoriteId(favorite?.id || null);
+      })
+      .catch(() => {
+        if (active) setFavoriteId(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [tokenFavoriteKey]);
+
+  const toggleWatchlist = async () => {
+    if (!localStorage.getItem('cto_auth_token')) {
+      toast.error('Please sign in to use your watchlist');
+      return;
+    }
+    if (!contractAddress || favoritePending) return;
+
+    setFavoritePending(true);
+    try {
+      if (favoriteId) {
+        await favoritesService.remove(favoriteId);
+        setFavoriteId(null);
+        toast.success('Removed from watchlist');
+      } else {
+        const response = await favoritesService.add({
+          targetType: 'TOKEN',
+          targetId: contractAddress,
+          chain: data?.chain || 'SOLANA',
+        });
+        setFavoriteId(response.favorite.id);
+        toast.success('Added to watchlist');
+      }
+    } catch {
+      toast.error('Unable to update your watchlist');
+    } finally {
+      setFavoritePending(false);
+    }
+  };
   const formatTradeError = (message: string, chain: string) => {
     const lower = (message || '').toLowerCase();
     if (lower.includes('insufficient liquidity')) {
@@ -1137,6 +1195,15 @@ export const ListingDetail: React.FC = () => {
             ← Back
           </button>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void toggleWatchlist()}
+              disabled={favoritePending}
+              className="px-3 py-1 border rounded hover:bg-gray-100 transition-colors"
+              aria-pressed={Boolean(favoriteId)}
+            >
+              {favoritePending ? 'Updating...' : favoriteId ? 'Remove from watchlist' : 'Add to watchlist'}
+            </button>
             <div className="text-xs text-gray-500">{data.chain}</div>
           </div>
         </div>
