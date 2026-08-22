@@ -6,19 +6,9 @@ import { clearRewardData, getStoredRewardData, persistRewardData } from '../util
 
 class AuthService {
   private baseUrl: string;
-  private isProduction: boolean;
 
   constructor() {
     this.baseUrl = API_ENDPOINTS.auth.base;
-    // Use real auth if Circle API is configured (even in local development)
-    this.isProduction = !!(process.env.REACT_APP_CIRCLE_API_KEY && 
-                           process.env.REACT_APP_CIRCLE_APP_ID);
-    
-    if (this.isProduction) {
-      console.log('Using production authentication services with Circle API.');
-    } else {
-      console.log('Circle API not configured - authentication will fail.');
-    }
   }
 
   private getHeaders() {

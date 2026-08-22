@@ -18,10 +18,26 @@ export const messagesService = {
     return res.data?.data || res.data;
   },
 
-  async listThreads() {
+  async listThreads(options?: {
+    type?: 'GENERAL' | 'MARKETPLACE';
+    archived?: boolean;
+  }) {
     const res = await axios.get(`${backendUrl}/api/v1/messages/threads`, {
       headers: authHeaders(),
+      params: {
+        ...(options?.type ? { type: options.type } : {}),
+        ...(typeof options?.archived === 'boolean' ? { archived: options.archived } : {}),
+      },
     });
+    return res.data?.data || res.data;
+  },
+
+  async createGeneral(recipientUserId: number, initialMessage?: string) {
+    const res = await axios.post(
+      `${backendUrl}/api/v1/messages/threads/general`,
+      { recipientUserId, initialMessage },
+      { headers: authHeaders() }
+    );
     return res.data?.data || res.data;
   },
 
@@ -44,6 +60,24 @@ export const messagesService = {
   async markRead(threadId: string) {
     const res = await axios.post(
       `${backendUrl}/api/v1/messages/threads/${threadId}/read`,
+      {},
+      { headers: authHeaders() }
+    );
+    return res.data?.data || res.data;
+  },
+
+  async archiveThread(threadId: string) {
+    const res = await axios.patch(
+      `${backendUrl}/api/v1/messages/threads/${threadId}/archive`,
+      {},
+      { headers: authHeaders() }
+    );
+    return res.data?.data || res.data;
+  },
+
+  async restoreThread(threadId: string) {
+    const res = await axios.patch(
+      `${backendUrl}/api/v1/messages/threads/${threadId}/restore`,
       {},
       { headers: authHeaders() }
     );

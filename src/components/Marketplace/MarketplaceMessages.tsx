@@ -15,9 +15,11 @@ const backendUrl = getBackendUrl();
 
 type Thread = {
   id: string;
-  ad: any;
+  type?: 'GENERAL' | 'MARKETPLACE';
+  ad?: any;
   posterId: number;
   applicantId: number;
+  isArchived?: boolean;
   poster?: {
     id: number;
     name?: string | null;
@@ -34,6 +36,8 @@ type Thread = {
   lastMessagePreview?: string;
   updatedAt?: string;
 };
+
+type InboxFilter = 'GENERAL' | 'MARKETPLACE' | 'ARCHIVED';
 
 export default function MarketplaceMessages() {
   const { threadId, profileUserId } = useParams();
@@ -53,24 +57,48 @@ export default function MarketplaceMessages() {
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('MARKETPLACE');
+  const [generalRecipientId, setGeneralRecipientId] = useState('');
+  const [generalInitialMessage, setGeneralInitialMessage] = useState('');
+  const [creatingGeneral, setCreatingGeneral] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
+  const isMarketplaceConversation = activeThread?.type !== 'GENERAL';
 
   useEffect(() => {
     let mounted = true;
     setLoadingThreads(true);
     messagesService
-      .listThreads()
+      .listThreads(
+        inboxFilter === 'ARCHIVED'
+          ? { archived: true }
+          : { type: inboxFilter, archived: false }
+      )
       .then((res: any) => {
         if (!mounted) return;
         const items = res?.items || res || [];
         setThreads(items);
         if (threadId) {
           const match = items.find((t: Thread) => t.id === threadId);
-          if (match) setActiveThread(match);
+          if (match) {
+            setActiveThread(match);
+          } else {
+            messagesService.getThread(threadId).then((res: any) => {
+              if (!mounted) return;
+              const conversation = res?.conversation || res?.thread || res;
+              if (conversation?.id) {
+                setActiveThread(conversation);
+                if (conversation.isArchived) setInboxFilter('ARCHIVED');
+                else setInboxFilter(conversation.type === 'GENERAL' ? 'GENERAL' : 'MARKETPLACE');
+              }
+            }).catch(() => null);
+          }
         } else if (items[0]) {
           setActiveThread(items[0]);
+        } else {
+          setActiveThread(null);
+          setMessages([]);
         }
       })
       .finally(() => {
@@ -79,14 +107,18 @@ export default function MarketplaceMessages() {
     return () => {
       mounted = false;
     };
-  }, [threadId]);
+  }, [threadId, inboxFilter]);
 
   useEffect(() => {
     let alive = true;
     const poll = async () => {
       try {
         setPolling(true);
-        const res = await messagesService.listThreads();
+        const res = await messagesService.listThreads(
+          inboxFilter === 'ARCHIVED'
+            ? { archived: true }
+            : { type: inboxFilter, archived: false }
+        );
         if (!alive) return;
         const items = res?.items || res || [];
         setThreads(items);
@@ -101,10 +133,13 @@ export default function MarketplaceMessages() {
       alive = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [inboxFilter]);
 
   useEffect(() => {
-    if (!activeThread) return;
+    if (!activeThread || !isMarketplaceConversation) {
+      setCurrentEscrow(null);
+      return;
+    }
     localStorage.setItem('cto_active_conversation_id', activeThread.id);
     setLoadingMessages(true);
     messagesService
@@ -118,7 +153,7 @@ export default function MarketplaceMessages() {
         messagesService.markRead(activeThread.id).catch(() => null);
       })
       .finally(() => setLoadingMessages(false));
-  }, [activeThread?.id]);
+  }, [activeThread?.id, isMarketplaceConversation]);
 
   useEffect(() => {
     if (!activeThread) return;
@@ -147,7 +182,7 @@ export default function MarketplaceMessages() {
     });
     let mounted = true;
     const refreshActiveEscrow = () => {
-      if (!activeThread) return;
+      if (!activeThread || !isMarketplaceConversation) return;
       escrowService.getLatestByConversation(activeThread.id).then((res: any) => {
         if (!mounted) return;
         setCurrentEscrow(res?.escrow || res);
@@ -187,7 +222,7 @@ export default function MarketplaceMessages() {
       mounted = false;
       socket.disconnect();
     };
-  }, [activeThread?.id]);
+  }, [activeThread?.id, isMarketplaceConversation]);
 
   const isPoster = useMemo(() => {
     if (!activeThread) return false;
@@ -439,6 +474,58 @@ export default function MarketplaceMessages() {
   const applicantDisplayName =
     activeThread?.applicant?.name || activeThread?.applicant?.email || 'applicant';
 
+  const threadTitle = (thread: Thread) => {
+    if (thread.type !== 'GENERAL') return thread.ad?.title || 'Marketplace conversation';
+    const counterpart = thread.posterId === userId ? thread.applicant : thread.poster;
+    return counterpart?.name || counterpart?.email || 'General conversation';
+  };
+
+  const handleCreateGeneral = async () => {
+    const recipientUserId = Number(generalRecipientId);
+    if (!Number.isInteger(recipientUserId) || recipientUserId <= 0) {
+      toast.error('Enter a valid recipient user ID');
+      return;
+    }
+    try {
+      setCreatingGeneral(true);
+      const response = await messagesService.createGeneral(
+        recipientUserId,
+        generalInitialMessage.trim() || undefined
+      );
+      const conversation = response?.conversation || response;
+      setInboxFilter('GENERAL');
+      setThreads((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
+      setActiveThread(conversation);
+      setGeneralRecipientId('');
+      setGeneralInitialMessage('');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Unable to start conversation');
+    } finally {
+      setCreatingGeneral(false);
+    }
+  };
+
+  const handleArchiveState = async () => {
+    if (!activeThread) return;
+    try {
+      if (inboxFilter === 'ARCHIVED' || activeThread.isArchived) {
+        await messagesService.restoreThread(activeThread.id);
+        setThreads((current) => current.filter((item) => item.id !== activeThread.id));
+        setActiveThread(null);
+        setMessages([]);
+        toast.success('Conversation restored');
+      } else {
+        await messagesService.archiveThread(activeThread.id);
+        setThreads((current) => current.filter((item) => item.id !== activeThread.id));
+        setActiveThread(null);
+        setMessages([]);
+        toast.success('Conversation archived');
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Unable to update conversation');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white">
       <MarketplaceTopNav />
@@ -447,9 +534,48 @@ export default function MarketplaceMessages() {
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4">
           <input className="w-full rounded-full bg-white/5 px-4 py-2 text-sm" placeholder="Search" />
           <div className="mt-3 flex gap-2 text-xs">
-            <button className="rounded-full bg-pink-600/20 px-3 py-1">Inbox</button>
-            <button className="rounded-full border border-white/10 px-3 py-1 text-zinc-400">Archive</button>
+            <button
+              onClick={() => setInboxFilter('MARKETPLACE')}
+              className={inboxFilter === 'MARKETPLACE' ? 'rounded-full bg-pink-600/20 px-3 py-1' : 'rounded-full border border-white/10 px-3 py-1 text-zinc-400'}
+            >
+              Marketplace
+            </button>
+            <button
+              onClick={() => setInboxFilter('GENERAL')}
+              className={inboxFilter === 'GENERAL' ? 'rounded-full bg-pink-600/20 px-3 py-1' : 'rounded-full border border-white/10 px-3 py-1 text-zinc-400'}
+            >
+              General
+            </button>
+            <button
+              onClick={() => setInboxFilter('ARCHIVED')}
+              className={inboxFilter === 'ARCHIVED' ? 'rounded-full bg-pink-600/20 px-3 py-1' : 'rounded-full border border-white/10 px-3 py-1 text-zinc-400'}
+            >
+              Archive
+            </button>
           </div>
+          {inboxFilter === 'GENERAL' && (
+            <div className="mt-3 space-y-2">
+              <input
+                value={generalRecipientId}
+                onChange={(event) => setGeneralRecipientId(event.target.value)}
+                className="w-full rounded-full bg-white/5 px-4 py-2 text-xs"
+                placeholder="Recipient user ID"
+              />
+              <input
+                value={generalInitialMessage}
+                onChange={(event) => setGeneralInitialMessage(event.target.value)}
+                className="w-full rounded-full bg-white/5 px-4 py-2 text-xs"
+                placeholder="First message (optional)"
+              />
+              <button
+                onClick={handleCreateGeneral}
+                disabled={creatingGeneral}
+                className="w-full rounded-full border border-white/10 px-3 py-2 text-xs text-zinc-300"
+              >
+                {creatingGeneral ? 'Starting...' : 'Start general conversation'}
+              </button>
+            </div>
+          )}
           <div className="mt-4 space-y-3">
             {threads.map((t) => (
               <button
@@ -459,7 +585,7 @@ export default function MarketplaceMessages() {
                   activeThread?.id === t.id ? 'border-pink-500/60 bg-white/5' : 'border-white/10'
                 }`}
               >
-                <div className="text-sm font-semibold">{t.ad?.title || 'Conversation'}</div>
+                <div className="text-sm font-semibold">{threadTitle(t)}</div>
                 <div className="text-zinc-400 truncate">{t.lastMessagePreview || 'No messages yet'}</div>
               </button>
             ))}
@@ -469,8 +595,16 @@ export default function MarketplaceMessages() {
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-black/70 p-4 flex flex-col">
-          <div className="text-sm text-zinc-400">
-            Subject: {activeThread?.ad?.title || 'Conversation'}
+          <div className="flex items-center justify-between text-sm text-zinc-400">
+            <span>Subject: {activeThread ? threadTitle(activeThread) : 'Conversation'}</span>
+            {activeThread && (
+              <button
+                onClick={handleArchiveState}
+                className="rounded-full border border-white/10 px-3 py-1 text-xs text-zinc-400"
+              >
+                {inboxFilter === 'ARCHIVED' || activeThread.isArchived ? 'Restore' : 'Archive'}
+              </button>
+            )}
           </div>
           <div className="flex-1 mt-4 space-y-4 overflow-y-auto">
             {messages.map((m) => (
@@ -617,24 +751,30 @@ export default function MarketplaceMessages() {
             )}
           </div>
           <div className="mt-6 space-y-3 text-xs text-zinc-400">
-            <div>Project Brief</div>
-            <div className="text-white">{activeThread?.ad?.description?.slice(0, 120) || 'N/A'}...</div>
+            <div>{isMarketplaceConversation ? 'Project Brief' : 'Conversation Type'}</div>
+            <div className="text-white">
+              {isMarketplaceConversation
+                ? `${activeThread?.ad?.description?.slice(0, 120) || 'N/A'}...`
+                : 'General conversation'}
+            </div>
           </div>
-          <button
-            onClick={hasEscrow ? openEscrowView : openEscrow}
-            disabled={!isPoster && !hasEscrow}
-            className={`mt-6 w-full rounded-full px-4 py-3 text-sm font-semibold ${
-              !isPoster && !hasEscrow
-                ? 'cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500'
-                : 'bg-gradient-to-r from-pink-500 to-amber-400 text-black'
-            }`}
-          >
-            {hasEscrow ? 'View Escrow' : isPoster ? 'Set Up Escrow' : 'No Escrow Set Yet'}
-          </button>
+          {isMarketplaceConversation && (
+            <button
+              onClick={hasEscrow ? openEscrowView : openEscrow}
+              disabled={!isPoster && !hasEscrow}
+              className={`mt-6 w-full rounded-full px-4 py-3 text-sm font-semibold ${
+                !isPoster && !hasEscrow
+                  ? 'cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500'
+                  : 'bg-gradient-to-r from-pink-500 to-amber-400 text-black'
+              }`}
+            >
+              {hasEscrow ? 'View Escrow' : isPoster ? 'Set Up Escrow' : 'No Escrow Set Yet'}
+            </button>
+          )}
         </div>
       </div>
 
-      {showEscrowProposed && (
+      {isMarketplaceConversation && showEscrowProposed && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-40">
           <div className="rounded-2xl border border-white/10 bg-black/80 px-10 py-6 text-center">
             <p className="text-sm text-zinc-400">Escrow Deal Proposed</p>
@@ -652,11 +792,11 @@ export default function MarketplaceMessages() {
         </div>
       )}
 
-      {escrowModalOpen && (
+      {isMarketplaceConversation && escrowModalOpen && (
         <EscrowCreateModal onClose={() => setEscrowModalOpen(false)} onSubmit={createEscrow} />
       )}
 
-      {escrowViewOpen && (
+      {isMarketplaceConversation && escrowViewOpen && (
         <EscrowViewModal
           escrow={currentEscrow}
           onClose={() => setEscrowViewOpen(false)}

@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
+import toast from 'react-hot-toast';
 import { ROUTES } from '../../utils/constants';
 import { normalizeImageUrl } from '../../utils/helpers';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import FallbackImage from '../FallbackImage';
+import favoritesService from '../../services/favoritesService';
 
 // Minimal type matching backend list response
 interface ListingItem {
@@ -58,8 +60,17 @@ interface PaginatedResponse {
 }
 
 const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://api.ctomarketplace.com';
-const WATCHLIST_KEY = 'cto_watchlist_tokens';
 const SETTINGS_KEY = 'cto_listing_settings';
+
+const favoriteKey = (chain: string | null | undefined, address: string) => {
+  const normalizedChain = String(chain || 'UNKNOWN').trim().toUpperCase();
+  const normalizedAddress = ['ETHEREUM', 'BASE', 'BSC', 'MOVEMENT', 'APTOS'].includes(normalizedChain)
+    ? address.toLowerCase()
+    : address;
+  return `${normalizedChain}:${normalizedAddress}`;
+};
+
+const userListingFavoriteKey = (listingId: string) => `USER_LISTING:${listingId}`;
 
 export const ListingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -80,7 +91,8 @@ export const ListingsPage: React.FC = () => {
     noRaiding: false,
   });
   const [showFilters, setShowFilters] = useState(false);
-  const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
+  const [favoriteIds, setFavoriteIds] = useState<Map<string, string>>(new Map());
+  const [favoritePending, setFavoritePending] = useState<Set<string>>(new Set());
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
   const [showApprovedOnly, setShowApprovedOnly] = useState(false);
   const [language, setLanguage] = useState<'English' | 'Espanol'>('English');
@@ -92,11 +104,10 @@ export const ListingsPage: React.FC = () => {
   const [volumeChanges, setVolumeChanges] = useState<Map<string, 'up' | 'down'>>(new Map());
   const previousPrices = useRef<Map<string, number>>(new Map());
   const previousVolumes = useRef<Map<string, number>>(new Map());
+  const isAuthenticated = useMemo(() => !!localStorage.getItem('cto_auth_token'), []);
 
   useEffect(() => {
     try {
-      const rawWatchlist = localStorage.getItem(WATCHLIST_KEY);
-      if (rawWatchlist) setWatchlist(new Set(JSON.parse(rawWatchlist)));
       const rawSettings = localStorage.getItem(SETTINGS_KEY);
       if (rawSettings) {
         const parsed = JSON.parse(rawSettings);
@@ -109,12 +120,34 @@ export const ListingsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(Array.from(watchlist)));
-  }, [watchlist]);
-
-  useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ language, currency }));
   }, [language, currency]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setFavoriteIds(new Map());
+      return;
+    }
+
+    let active = true;
+    favoritesService.list()
+      .then((response) => {
+        if (!active) return;
+        setFavoriteIds(new Map(response.items.map((favorite) => [
+          favorite.targetType === 'TOKEN'
+            ? favorite.targetKey
+            : `${favorite.targetType}:${favorite.targetKey}`,
+          favorite.id,
+        ])));
+      })
+      .catch(() => {
+        if (active) toast.error('Unable to load your watchlist');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   const fetchListings = async (showLoading = true) => {
     try {
@@ -398,15 +431,97 @@ export const ListingsPage: React.FC = () => {
     };
   }, [backendUrl, page]);
 
-  const isAuthenticated = useMemo(() => !!localStorage.getItem('cto_auth_token'), []);
   const visibleItems = useMemo(() => {
     const items = data?.items || [];
     return items.filter((item) => {
-      const watchlistOk = !showWatchlistOnly || watchlist.has(item.contractAddress);
+      const watchlistOk = !showWatchlistOnly || favoriteIds.has(favoriteKey(item.chain, item.contractAddress));
       const approvedOk = !showApprovedOnly || Boolean(item.approved) || Boolean(item.tier && item.tier !== 'unclassified');
       return watchlistOk && approvedOk;
     });
-  }, [data?.items, showWatchlistOnly, showApprovedOnly, watchlist]);
+  }, [data?.items, showWatchlistOnly, showApprovedOnly, favoriteIds]);
+
+  const visibleUserListings = useMemo(() => {
+    const items = userListData?.items || [];
+    if (!showWatchlistOnly) return items;
+    return items.filter((item) => favoriteIds.has(userListingFavoriteKey(item.id)));
+  }, [userListData?.items, showWatchlistOnly, favoriteIds]);
+
+  const toggleFavorite = async (item: ListingItem) => {
+    if (!isAuthenticated) {
+      toast.error('Please sign in to use your watchlist');
+      return;
+    }
+
+    const key = favoriteKey(item.chain, item.contractAddress);
+    if (favoritePending.has(key)) return;
+
+    setFavoritePending((current) => new Set(current).add(key));
+    try {
+      const existingId = favoriteIds.get(key);
+      if (existingId) {
+        await favoritesService.remove(existingId);
+        setFavoriteIds((current) => {
+          const next = new Map(current);
+          next.delete(key);
+          return next;
+        });
+      } else {
+        const response = await favoritesService.add({
+          targetType: 'TOKEN',
+          targetId: item.contractAddress,
+          chain: item.chain,
+        });
+        setFavoriteIds((current) => new Map(current).set(response.favorite.targetKey, response.favorite.id));
+      }
+    } catch {
+      toast.error('Unable to update your watchlist');
+    } finally {
+      setFavoritePending((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const toggleUserListingFavorite = async (listing: any) => {
+    if (!isAuthenticated) {
+      toast.error('Please sign in to use your watchlist');
+      return;
+    }
+
+    const key = userListingFavoriteKey(listing.id);
+    if (favoritePending.has(key)) return;
+
+    setFavoritePending((current) => new Set(current).add(key));
+    try {
+      const existingId = favoriteIds.get(key);
+      if (existingId) {
+        await favoritesService.remove(existingId);
+        setFavoriteIds((current) => {
+          const next = new Map(current);
+          next.delete(key);
+          return next;
+        });
+      } else {
+        const response = await favoritesService.add({
+          targetType: 'USER_LISTING',
+          targetId: listing.id,
+        });
+        setFavoriteIds((current) =>
+          new Map(current).set(userListingFavoriteKey(response.favorite.targetKey), response.favorite.id)
+        );
+      }
+    } catch {
+      toast.error('Unable to update your watchlist');
+    } finally {
+      setFavoritePending((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   const isApproved = (it: ListingItem) => Boolean(it.approved) || Boolean(it.tier && it.tier !== 'unclassified');
 
@@ -872,17 +987,15 @@ export const ListingsPage: React.FC = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setWatchlist((prev) => {
-                                      const next = new Set(prev);
-                                      if (next.has(it.contractAddress)) next.delete(it.contractAddress);
-                                      else next.add(it.contractAddress);
-                                      return next;
-                                    });
+                                    void toggleFavorite(it);
                                   }}
-                                  className={watchlist.has(it.contractAddress) ? 'text-amber-300' : 'text-gray-500 hover:text-gray-300'}
+                                  disabled={favoritePending.has(favoriteKey(it.chain, it.contractAddress))}
+                                  className={favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'text-amber-300' : 'text-gray-500 hover:text-gray-300'}
                                   title="Toggle watchlist"
                                 >
-                                  {watchlist.has(it.contractAddress) ? 'ON' : 'ADD'}
+                                  {favoritePending.has(favoriteKey(it.chain, it.contractAddress))
+                                    ? '...'
+                                    : favoriteIds.has(favoriteKey(it.chain, it.contractAddress)) ? 'ON' : 'ADD'}
                                 </button>
                                 <span className="text-sm font-bold text-white uppercase">{it.symbol || 'Unknown'}</span>
                                 {isApproved(it) && (
@@ -1054,19 +1167,36 @@ export const ListingsPage: React.FC = () => {
               </table>
             </div>
 
-            {userListData && userListData.items?.length > 0 && (
+            {userListData && visibleUserListings.length > 0 && (
               <div className="mt-8">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-lg font-semibold text-white">User Listings</h2>
-                  <div className="text-xs text-gray-400">Showing {userListData.items.length} of {userListData.total}</div>
+                  <div className="text-xs text-gray-400">Showing {visibleUserListings.length} of {userListData.total}</div>
                 </div>
                 <div className="grid grid-cols-1 md-grid-cols-2 lg-grid-cols-3 gap-4 md:grid-cols-2">
-                  {userListData.items.map((ul: any) => (
+                  {visibleUserListings.map((ul: any) => (
                     <Link key={ul.id} to={`/user-listings/${ul.id}`} className="block bg-gray-800 border border-gray-700 rounded p-4 shadow-sm hover:shadow-lg hover:bg-gray-750 transition">
                       {renderUserThumb(ul)}
                       <div className="flex items-center justify-between">
                         <div className="font-semibold text-white truncate">{ul.title}</div>
-                        <div className="text-[10px] px-2 py-0.5 rounded bg-purple-900 text-purple-200 border border-purple-700">User Listing</div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void toggleUserListingFavorite(ul);
+                            }}
+                            disabled={favoritePending.has(userListingFavoriteKey(ul.id))}
+                            className={favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'text-amber-300' : 'text-gray-500 hover:text-gray-300'}
+                            title="Toggle watchlist"
+                          >
+                            {favoritePending.has(userListingFavoriteKey(ul.id))
+                              ? '...'
+                              : favoriteIds.has(userListingFavoriteKey(ul.id)) ? 'ON' : 'ADD'}
+                          </button>
+                          <div className="text-[10px] px-2 py-0.5 rounded bg-purple-900 text-purple-200 border border-purple-700">User Listing</div>
+                        </div>
                       </div>
                       <div className="text-xs text-gray-400 truncate">{ul.contractAddr}</div>
                       <div className="text-xs text-gray-400">Chain: {ul.chain}</div>
