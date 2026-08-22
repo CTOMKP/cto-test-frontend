@@ -418,26 +418,76 @@ export default function MarketplaceMessages() {
 
   const renderMessageBody = (body: string) => {
     const text = String(body || '');
-    const segments = text.split(/(https?:\/\/[^\s]+)/g);
-    return segments.map((segment, idx) => {
-      if (/^https?:\/\/[^\s]+$/i.test(segment)) {
-        return (
+    const attachmentPrefix = 'Attachment:';
+    const lineBreakIndex = text.indexOf(String.fromCharCode(10));
+    const possibleFileName =
+      lineBreakIndex > attachmentPrefix.length
+        ? text.slice(attachmentPrefix.length, lineBreakIndex).trim()
+        : '';
+    const possibleFileUrl = lineBreakIndex >= 0 ? text.slice(lineBreakIndex + 1).trim() : '';
+    const isAttachment =
+      text.startsWith(attachmentPrefix) &&
+      Boolean(possibleFileName) &&
+      (possibleFileUrl.startsWith('https://') || possibleFileUrl.startsWith('http://'));
+
+    if (isAttachment) {
+      const lowerFileName = possibleFileName.toLowerCase();
+      const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp'].some((extension) =>
+        lowerFileName.endsWith(extension),
+      );
+      return (
+        <div className="space-y-2">
+          {isImage && (
+            <a
+              href={possibleFileUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <img
+                src={possibleFileUrl}
+                alt={possibleFileName}
+                className="max-h-64 w-auto max-w-full rounded-xl object-contain"
+                loading="lazy"
+              />
+            </a>
+          )}
           <a
-            key={`${segment}-${idx}`}
-            href={segment}
+            href={possibleFileUrl}
             target="_blank"
             rel="noreferrer"
-            className="underline text-blue-600"
-            onClick={(e) => e.stopPropagation()}
+            className="flex items-center justify-between gap-3 rounded-xl border border-black/10 bg-black/5 px-3 py-2 no-underline"
+            onClick={(event) => event.stopPropagation()}
           >
-            {segment}
+            <span className="min-w-0 truncate font-medium">Attachment: {possibleFileName}</span>
+            <span className="shrink-0 text-xs underline">Open file</span>
           </a>
-        );
-      }
-      return <span key={`${idx}-${segment}`}>{segment}</span>;
+        </div>
+      );
+    }
+
+    return text.split(' ').map((segment, idx) => {
+      const isUrl = segment.startsWith('https://') || segment.startsWith('http://');
+      return (
+        <React.Fragment key={idx + '-' + segment}>
+          {idx > 0 ? ' ' : null}
+          {isUrl ? (
+            <a
+              href={segment}
+              target="_blank"
+              rel="noreferrer"
+              className="underline text-blue-600"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {segment}
+            </a>
+          ) : (
+            segment
+          )}
+        </React.Fragment>
+      );
     });
   };
-
   useEffect(() => {
     setProfileAvatarError(false);
   }, [selectedProfileUser?.id, profileAvatarSrc]);
