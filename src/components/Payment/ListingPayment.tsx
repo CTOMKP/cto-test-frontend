@@ -12,7 +12,6 @@ import { movementPaymentService } from '../../services/movementPaymentService';
 import solanaPaymentService from '../../services/solanaPaymentService';
 import solanaWalletService from '../../services/solanaWalletService';
 import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-wallet';
-import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 
 interface ListingPaymentProps {
@@ -176,20 +175,17 @@ export const ListingPayment: React.FC<ListingPaymentProps> = ({
 
         const txBytes = decodeBase64(txBase64);
 
-        const connection = new Connection(
-          process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-          'confirmed'
-        );
-        const rpcUrl = process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-        const signingChain = rpcUrl.includes('devnet') ? 'solana:devnet' : 'solana:mainnet';
+        const signingChain =
+          paymentData.chainId || (String(paymentData.network).includes('devnet') ? 'solana:devnet' : 'solana:mainnet');
         const signedResult = await signSolanaTransaction({
           transaction: txBytes,
           wallet: solanaWallet as any,
           chain: signingChain as any,
         });
-        const raw = Buffer.from(signedResult.signedTransaction);
-        const txHash = await connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
-        await connection.confirmTransaction(txHash, 'confirmed');
+        const signedTransaction = Buffer.from(signedResult.signedTransaction).toString('base64');
+        const broadcast = await solanaPaymentService.broadcastPayment(paymentData.paymentId, signedTransaction);
+        const txHash = broadcast?.txHash || broadcast?.data?.txHash;
+        if (!txHash) throw new Error('Backend did not return a Solana transaction hash');
 
         setSolanaTxHash(txHash);
         toast.success('Transaction submitted! Verifying payment...');

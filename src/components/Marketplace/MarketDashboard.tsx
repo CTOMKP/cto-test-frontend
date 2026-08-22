@@ -1,4 +1,3 @@
-﻿
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -12,7 +11,6 @@ import { getMovementWallet, sendMovementTransaction } from '../../lib/movement-w
 import { useWallets } from '@privy-io/react-auth';
 import { useWallets as useSolanaWallets, useCreateWallet as useCreateSolanaWallet, useSignTransaction } from '@privy-io/react-auth/solana';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
-import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { pfpService } from '../../services/pfpService';
 import { getCloudFrontUrl } from '../../utils/image-url-helper';
 import MarketplaceTopNav from './MarketplaceTopNav';
@@ -176,6 +174,7 @@ export default function MarketDashboard() {
   const [walletAddress, setWalletAddress] = useState('');
   const [walletPublicKey, setWalletPublicKey] = useState('');
   const [solanaBalance, setSolanaBalance] = useState(0);
+  const [solanaBalanceLoaded, setSolanaBalanceLoaded] = useState(false);
   const [solanaAddress, setSolanaAddress] = useState('');
   const [adsId] = useState('#432738');
   const [agreeRules, setAgreeRules] = useState(false);
@@ -401,16 +400,41 @@ export default function MarketDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!solanaWallet?.address) return;
-    setSolanaAddress(solanaWallet.address);
-    solanaWalletService
-      .getBalance(solanaWallet.address)
-      .then((data) => {
-        if (typeof data?.usdc === 'number') setSolanaBalance(data.usdc);
-      })
-      .catch(() => null);
-  }, [solanaWallet]);
+    let active = true;
+    const loadSolanaBalance = async () => {
+      setSolanaBalanceLoaded(false);
+      let address = solanaWallet?.address || '';
 
+      if (!address) {
+        try {
+          const walletResult = await privyService.getUserWallets();
+          const backendWallets = walletResult?.data?.wallets || walletResult?.wallets || [];
+          const backendSolanaWallet = backendWallets.find(
+            (wallet: any) => String(wallet?.blockchain || wallet?.chainType || '').toUpperCase() === 'SOLANA'
+          );
+          address = backendSolanaWallet?.address || '';
+        } catch {
+          // The signer hook may still become ready after the backend lookup.
+        }
+      }
+
+      if (!active || !address) return;
+      setSolanaAddress(address);
+      try {
+        const data = await solanaWalletService.getBalance(address);
+        if (!active) return;
+        setSolanaBalance(typeof data?.usdc === 'number' ? data.usdc : 0);
+        setSolanaBalanceLoaded(true);
+      } catch {
+        if (active) setSolanaBalanceLoaded(false);
+      }
+    };
+
+    loadSolanaBalance();
+    return () => {
+      active = false;
+    };
+  }, [solanaWallet?.address]);
   useEffect(() => {
     try {
       const movementWallet = getMovementWallet(privyUser);
@@ -507,7 +531,9 @@ export default function MarketDashboard() {
   const paymentChain = selectedPaymentMethod.chain;
   const paymentTokenLabel = selectedPaymentMethod.value;
   const effectiveBalance = isSolanaPayment ? solanaBalance : walletBalance;
-  const lowBalance = effectiveBalance < estimatedTotal;
+  const lowBalance = isSolanaPayment
+    ? solanaBalanceLoaded && effectiveBalance < estimatedTotal
+    : effectiveBalance < estimatedTotal;
 
   const updateDraft = (next: Partial<AdDraft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
@@ -636,12 +662,25 @@ export default function MarketDashboard() {
 
       if (isSolanaPayment) {
         const solWallet = await ensureSolanaSignerWallet();
+        const freshBalance = await solanaWalletService.getBalance(solWallet.address);
+        const availableUsdc = Number(freshBalance?.usdc || 0);
+        const availableSol = Number(freshBalance?.sol || 0);
+        setSolanaAddress(solWallet.address);
+        setSolanaBalance(availableUsdc);
+        setSolanaBalanceLoaded(true);
+        if (!Number.isFinite(availableUsdc) || availableUsdc < estimatedTotal) {
+          throw new Error(`Insufficient Solana USDC. Available: ${availableUsdc.toFixed(2)} USDC; required: ${estimatedTotal.toFixed(2)} USDC.`);
+        }
+        if (!Number.isFinite(availableSol) || availableSol < 0.002) {
+          throw new Error(`Insufficient SOL for network fees. Available: ${availableSol.toFixed(4)} SOL.`);
+        }
+
         const paymentResponse = await marketplaceService.createPayment(nextId, 'SOLANA');
         const envelope = paymentResponse || {};
         const paymentData = envelope?.data ?? envelope;
         const paymentObject = paymentData?.payment || envelope?.payment || paymentData;
         const paymentMessage = envelope?.message || paymentData?.message || paymentObject?.message || '';
-        const resolvedPaymentId =
+        let resolvedPaymentId =
           envelope?.paymentId || paymentData?.paymentId || paymentObject?.paymentId || paymentObject?.id;
         if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
 
@@ -651,42 +690,38 @@ export default function MarketDashboard() {
         }
 
         let txBase64 = paymentData?.transaction || paymentObject?.transaction || paymentObject?.transactionData;
+        let paymentNetwork = paymentData?.network || paymentObject?.network;
+        let paymentChainId = paymentData?.chainId || paymentObject?.chainId;
         if (!txBase64) {
-          // Fallback for legacy "payment already initiated" responses that don't include tx payload.
           const legacyPayment = await solanaPaymentService.createMarketplaceAdPayment(nextId, estimatedTotal);
           const legacyData = legacyPayment?.data || legacyPayment;
-          const legacyPaymentId =
+          resolvedPaymentId =
             legacyData?.paymentId || legacyData?.payment?.paymentId || legacyData?.payment?.id;
-          if (legacyPaymentId) setPaymentId(legacyPaymentId);
+          if (resolvedPaymentId) setPaymentId(resolvedPaymentId);
           txBase64 = legacyData?.transaction || legacyData?.payment?.transaction;
+          paymentNetwork = legacyData?.network || legacyData?.payment?.network;
+          paymentChainId = legacyData?.chainId || legacyData?.payment?.chainId;
         }
         if (!txBase64) throw new Error(paymentMessage || 'Transaction data missing');
+        if (!resolvedPaymentId) throw new Error('Payment ID missing');
 
         const txBytes = decodeBase64(txBase64);
-
-        const connection = new Connection(
-          process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-          'confirmed'
-        );
-        const rpcUrl = process.env.REACT_APP_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-        const signingChain = rpcUrl.includes('devnet') ? 'solana:devnet' : 'solana:mainnet';
+        const signingChain =
+          paymentChainId || (String(paymentNetwork).includes('devnet') ? 'solana:devnet' : 'solana:mainnet');
         const signedResult = await signSolanaTransaction({
           transaction: txBytes,
           wallet: solWallet as any,
           chain: signingChain as any,
         });
-        const raw = Buffer.from(signedResult.signedTransaction);
-        const txHash = await connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
-        await connection.confirmTransaction(txHash, 'confirmed');
+        const signedTransaction = Buffer.from(signedResult.signedTransaction).toString('base64');
+        const broadcast = await solanaPaymentService.broadcastPayment(resolvedPaymentId, signedTransaction);
+        const txHash = broadcast?.txHash || broadcast?.data?.txHash;
+        if (!txHash) throw new Error('Backend did not return a Solana transaction hash');
 
-        if (resolvedPaymentId) {
-          await marketplaceService.verifyPayment(resolvedPaymentId, txHash);
-        }
-
+        await marketplaceService.verifyPayment(resolvedPaymentId, txHash);
         setStep('success');
         return;
       }
-
       if (!walletAddress || !walletPublicKey) {
         toast.error('Movement wallet not found. Please sync wallets in Profile.');
         return;

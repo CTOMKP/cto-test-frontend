@@ -39,6 +39,12 @@ type Thread = {
 
 type InboxFilter = 'GENERAL' | 'MARKETPLACE' | 'ARCHIVED';
 
+type UserSearchResult = {
+  id: number;
+  name?: string | null;
+  avatarUrl?: string | null;
+};
+
 export default function MarketplaceMessages() {
   const { threadId, profileUserId } = useParams();
   const navigate = useNavigate();
@@ -58,13 +64,51 @@ export default function MarketplaceMessages() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>('MARKETPLACE');
-  const [generalRecipientId, setGeneralRecipientId] = useState('');
+  const [generalUserQuery, setGeneralUserQuery] = useState('');
+  const [generalUserResults, setGeneralUserResults] = useState<UserSearchResult[]>([]);
+  const [selectedGeneralUser, setSelectedGeneralUser] = useState<UserSearchResult | null>(null);
+  const [searchingGeneralUsers, setSearchingGeneralUsers] = useState(false);
   const [generalInitialMessage, setGeneralInitialMessage] = useState('');
   const [creatingGeneral, setCreatingGeneral] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
   const isMarketplaceConversation = activeThread?.type !== 'GENERAL';
+
+  useEffect(() => {
+    const query = generalUserQuery.trim();
+    if (inboxFilter !== 'GENERAL' || selectedGeneralUser || query.length < 2) {
+      setGeneralUserResults([]);
+      setSearchingGeneralUsers(false);
+      return;
+    }
+
+    let active = true;
+    setSearchingGeneralUsers(true);
+    const timeout = window.setTimeout(() => {
+      messagesService
+        .searchUsers(query)
+        .then((response: any) => {
+          if (!active) return;
+          setGeneralUserResults(response?.items || response || []);
+        })
+        .catch((error: any) => {
+          if (!active) return;
+          setGeneralUserResults([]);
+          if (error?.response?.status !== 400) {
+            toast.error(error?.response?.data?.message || 'Unable to search users');
+          }
+        })
+        .finally(() => {
+          if (active) setSearchingGeneralUsers(false);
+        });
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [generalUserQuery, inboxFilter, selectedGeneralUser]);
 
   useEffect(() => {
     let mounted = true;
@@ -136,8 +180,8 @@ export default function MarketplaceMessages() {
   }, [inboxFilter]);
 
   useEffect(() => {
-    if (!activeThread || !isMarketplaceConversation) {
-      setCurrentEscrow(null);
+    if (!activeThread) {
+      setMessages([]);
       return;
     }
     localStorage.setItem('cto_active_conversation_id', activeThread.id);
@@ -153,10 +197,13 @@ export default function MarketplaceMessages() {
         messagesService.markRead(activeThread.id).catch(() => null);
       })
       .finally(() => setLoadingMessages(false));
-  }, [activeThread?.id, isMarketplaceConversation]);
+  }, [activeThread?.id]);
 
   useEffect(() => {
-    if (!activeThread) return;
+    if (!activeThread || !isMarketplaceConversation) {
+      setCurrentEscrow(null);
+      return;
+    }
     let alive = true;
     setCurrentEscrow(null);
     escrowService
@@ -172,7 +219,7 @@ export default function MarketplaceMessages() {
     return () => {
       alive = false;
     };
-  }, [activeThread?.id]);
+  }, [activeThread?.id, isMarketplaceConversation]);
 
   useEffect(() => {
     const token = localStorage.getItem('cto_auth_token');
@@ -481,22 +528,23 @@ export default function MarketplaceMessages() {
   };
 
   const handleCreateGeneral = async () => {
-    const recipientUserId = Number(generalRecipientId);
-    if (!Number.isInteger(recipientUserId) || recipientUserId <= 0) {
-      toast.error('Enter a valid recipient user ID');
+    if (!selectedGeneralUser) {
+      toast.error('Search for and select a user first');
       return;
     }
     try {
       setCreatingGeneral(true);
       const response = await messagesService.createGeneral(
-        recipientUserId,
+        selectedGeneralUser.id,
         generalInitialMessage.trim() || undefined
       );
       const conversation = response?.conversation || response;
       setInboxFilter('GENERAL');
       setThreads((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
       setActiveThread(conversation);
-      setGeneralRecipientId('');
+      setGeneralUserQuery('');
+      setGeneralUserResults([]);
+      setSelectedGeneralUser(null);
       setGeneralInitialMessage('');
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Unable to start conversation');
@@ -504,7 +552,6 @@ export default function MarketplaceMessages() {
       setCreatingGeneral(false);
     }
   };
-
   const handleArchiveState = async () => {
     if (!activeThread) return;
     try {
@@ -555,12 +602,52 @@ export default function MarketplaceMessages() {
           </div>
           {inboxFilter === 'GENERAL' && (
             <div className="mt-3 space-y-2">
-              <input
-                value={generalRecipientId}
-                onChange={(event) => setGeneralRecipientId(event.target.value)}
-                className="w-full rounded-full bg-white/5 px-4 py-2 text-xs"
-                placeholder="Recipient user ID"
-              />
+              <div className="relative">
+                <input
+                  value={generalUserQuery}
+                  onChange={(event) => {
+                    setGeneralUserQuery(event.target.value);
+                    setSelectedGeneralUser(null);
+                  }}
+                  className="w-full rounded-full bg-white/5 px-4 py-2 text-xs"
+                  placeholder="Search by display name"
+                  autoComplete="off"
+                />
+                {searchingGeneralUsers && (
+                  <div className="px-3 py-2 text-[10px] text-zinc-500">Searching...</div>
+                )}
+                {!selectedGeneralUser && generalUserResults.length > 0 && (
+                  <div className="mt-1 space-y-1 rounded-2xl border border-white/10 bg-zinc-950 p-2">
+                    {generalUserResults.map((candidate) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedGeneralUser(candidate);
+                          setGeneralUserQuery(candidate.name || `User ${candidate.id}`);
+                          setGeneralUserResults([]);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs hover:bg-white/5"
+                      >
+                        {candidate.avatarUrl ? (
+                          <img src={candidate.avatarUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                        ) : (
+                          <span className="h-7 w-7 rounded-full bg-white/10" />
+                        )}
+                        <span>
+                          <span className="block font-medium">{candidate.name || 'Unnamed user'}</span>
+                          <span className="block text-[10px] text-zinc-500">User #{candidate.id}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {selectedGeneralUser && (
+                <div className="px-3 text-[10px] text-emerald-400">
+                  Selected {selectedGeneralUser.name || `User #${selectedGeneralUser.id}`}
+                </div>
+              )}
               <input
                 value={generalInitialMessage}
                 onChange={(event) => setGeneralInitialMessage(event.target.value)}
@@ -569,8 +656,8 @@ export default function MarketplaceMessages() {
               />
               <button
                 onClick={handleCreateGeneral}
-                disabled={creatingGeneral}
-                className="w-full rounded-full border border-white/10 px-3 py-2 text-xs text-zinc-300"
+                disabled={creatingGeneral || !selectedGeneralUser}
+                className="w-full rounded-full border border-white/10 px-3 py-2 text-xs text-zinc-300 disabled:opacity-40"
               >
                 {creatingGeneral ? 'Starting...' : 'Start general conversation'}
               </button>

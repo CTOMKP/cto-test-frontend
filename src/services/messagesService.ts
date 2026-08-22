@@ -32,6 +32,14 @@ export const messagesService = {
     return res.data?.data || res.data;
   },
 
+  async searchUsers(query: string) {
+    const res = await axios.get(`${backendUrl}/api/v1/messages/users/search`, {
+      headers: authHeaders(),
+      params: { q: query },
+    });
+    return res.data?.data || res.data;
+  },
+
   async createGeneral(recipientUserId: number, initialMessage?: string) {
     const res = await axios.post(
       `${backendUrl}/api/v1/messages/threads/general`,

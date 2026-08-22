@@ -18,6 +18,15 @@ export const solanaPaymentService = {
     return res.data?.data || res.data;
   },
 
+  async broadcastPayment(paymentId: string, signedTransaction: string) {
+    const res = await axios.post(
+      `${backendUrl}/api/v1/payment/solana/broadcast/${paymentId}`,
+      { signedTransaction },
+      { headers: authHeaders() }
+    );
+    return res.data?.data || res.data;
+  },
+
   async verifyPayment(paymentId: string, txHash: string) {
     const res = await axios.post(
       `${backendUrl}/api/v1/payment/solana/verify/${paymentId}`,
