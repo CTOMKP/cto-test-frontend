@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
@@ -45,6 +45,22 @@ type UserSearchResult = {
   avatarUrl?: string | null;
 };
 
+const mergeMessageLists = (current: any[] = [], incoming: any[] = []) => {
+  const merged = new Map<string, any>();
+  [...current, ...incoming].forEach((message, index) => {
+    if (!message) return;
+    const key = message.id
+      ? String(message.id)
+      : String(message.senderId || 'unknown') + ':' + String(message.createdAt || '') + ':' + String(message.content || message.body || index);
+    merged.set(key, { ...(merged.get(key) || {}), ...message });
+  });
+  return Array.from(merged.values()).sort((left, right) => {
+    const leftTime = Date.parse(left?.createdAt || '') || 0;
+    const rightTime = Date.parse(right?.createdAt || '') || 0;
+    return leftTime - rightTime;
+  });
+};
+
 export default function MarketplaceMessages() {
   const { threadId, profileUserId } = useParams();
   const navigate = useNavigate();
@@ -71,9 +87,60 @@ export default function MarketplaceMessages() {
   const [generalInitialMessage, setGeneralInitialMessage] = useState('');
   const [creatingGeneral, setCreatingGeneral] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const threadCacheRef = useRef<Record<InboxFilter, Thread[]>>({
+    MARKETPLACE: [],
+    GENERAL: [],
+    ARCHIVED: [],
+  });
+  const messageCacheRef = useRef<Map<string, any[]>>(new Map());
+  const activeThreadRef = useRef<Thread | null>(null);
+  const isMarketplaceConversationRef = useRef(true);
 
   const userId = Number(localStorage.getItem('cto_user_id') || 0);
   const isMarketplaceConversation = activeThread?.type !== 'GENERAL';
+
+  useEffect(() => {
+    activeThreadRef.current = activeThread;
+    isMarketplaceConversationRef.current = isMarketplaceConversation;
+  }, [activeThread, isMarketplaceConversation]);
+
+  const mergeConversationMessages = useCallback((conversationId: string, incoming: any[]) => {
+    const merged = mergeMessageLists(messageCacheRef.current.get(conversationId) || [], incoming);
+    messageCacheRef.current.set(conversationId, merged);
+    if (activeThreadRef.current?.id === conversationId) {
+      setMessages(merged);
+    }
+    return merged;
+  }, []);
+
+  const updateConversationReaction = useCallback((conversationId: string, messageId: string, reactions: any[]) => {
+    const updated = (messageCacheRef.current.get(conversationId) || []).map((message) =>
+      message.id === messageId ? { ...message, reactions } : message,
+    );
+    messageCacheRef.current.set(conversationId, updated);
+    if (activeThreadRef.current?.id === conversationId) {
+      setMessages(updated);
+    }
+  }, []);
+
+  const changeInboxFilter = (nextFilter: InboxFilter) => {
+    if (nextFilter === inboxFilter) return;
+    if (threadId) navigate('/messages');
+    const cachedThreads = threadCacheRef.current[nextFilter] || [];
+    const cachedActiveThread = cachedThreads[0] || null;
+    setInboxFilter(nextFilter);
+    setThreads(cachedThreads);
+    setActiveThread(cachedActiveThread);
+    activeThreadRef.current = cachedActiveThread;
+    setMessages(cachedActiveThread ? messageCacheRef.current.get(cachedActiveThread.id) || [] : []);
+    setLoadingThreads(true);
+  };
+
+  const selectThread = (thread: Thread) => {
+    setActiveThread(thread);
+    activeThreadRef.current = thread;
+    setMessages(messageCacheRef.current.get(thread.id) || []);
+  };
 
   useEffect(() => {
     const query = generalUserQuery.trim();
@@ -122,6 +189,7 @@ export default function MarketplaceMessages() {
       .then((res: any) => {
         if (!mounted) return;
         const items = res?.items || res || [];
+        threadCacheRef.current[inboxFilter] = items;
         setThreads(items);
         if (threadId) {
           const match = items.find((t: Thread) => t.id === threadId);
@@ -165,6 +233,7 @@ export default function MarketplaceMessages() {
         );
         if (!alive) return;
         const items = res?.items || res || [];
+        threadCacheRef.current[inboxFilter] = items;
         setThreads(items);
       } catch {
         // ignore
@@ -184,20 +253,30 @@ export default function MarketplaceMessages() {
       setMessages([]);
       return;
     }
-    localStorage.setItem('cto_active_conversation_id', activeThread.id);
+    const conversationId = activeThread.id;
+    let alive = true;
+    activeThreadRef.current = activeThread;
+    localStorage.setItem('cto_active_conversation_id', conversationId);
+    setMessages(messageCacheRef.current.get(conversationId) || []);
     setLoadingMessages(true);
     messagesService
-      .getThread(activeThread.id)
+      .getThread(conversationId)
       .then((res: any) => {
+        if (!alive || activeThreadRef.current?.id !== conversationId) return;
         const convo = res?.conversation || res?.thread || res;
         if (convo?.id) {
-          setActiveThread((prev) => ({ ...(prev || {}), ...convo }));
+          setActiveThread((prev) => prev?.id === conversationId ? { ...prev, ...convo } : prev);
         }
-        setMessages(res?.messages || []);
-        messagesService.markRead(activeThread.id).catch(() => null);
+        mergeConversationMessages(conversationId, res?.messages || []);
+        messagesService.markRead(conversationId).catch(() => null);
       })
-      .finally(() => setLoadingMessages(false));
-  }, [activeThread?.id]);
+      .finally(() => {
+        if (alive && activeThreadRef.current?.id === conversationId) setLoadingMessages(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeThread?.id, mergeConversationMessages]);
 
   useEffect(() => {
     if (!activeThread || !isMarketplaceConversation) {
@@ -224,13 +303,14 @@ export default function MarketplaceMessages() {
   useEffect(() => {
     const token = localStorage.getItem('cto_auth_token');
     if (!token) return;
-    const socket: Socket = io(`${backendUrl}/ws`, {
+    const socket: Socket = io(backendUrl + '/ws', {
       transports: ['websocket', 'polling'],
     });
     let mounted = true;
     const refreshActiveEscrow = () => {
-      if (!activeThread || !isMarketplaceConversation) return;
-      escrowService.getLatestByConversation(activeThread.id).then((res: any) => {
+      const currentThread = activeThreadRef.current;
+      if (!currentThread || !isMarketplaceConversationRef.current) return;
+      escrowService.getLatestByConversation(currentThread.id).then((res: any) => {
         if (!mounted) return;
         setCurrentEscrow(res?.escrow || res);
       }).catch(() => {
@@ -242,34 +322,31 @@ export default function MarketplaceMessages() {
       socket.emit('notifications.subscribe', { token });
     });
     socket.on('messages.new', (payload: any) => {
-      if (payload?.conversationId === activeThread?.id) {
-        setMessages((prev) => [...prev, payload.message]);
-      }
+      if (!payload?.conversationId || !payload?.message) return;
+      mergeConversationMessages(payload.conversationId, [payload.message]);
     });
     socket.on('messages.reaction', (payload: any) => {
-      if (payload?.conversationId !== activeThread?.id) return;
-      if (!payload?.messageId) return;
-      setMessages((prev) =>
-        prev.map((m) => (m.id === payload.messageId ? { ...m, reactions: payload.reactions || [] } : m)),
-      );
+      if (!payload?.conversationId || !payload?.messageId) return;
+      updateConversationReaction(payload.conversationId, payload.messageId, payload.reactions || []);
     });
     socket.on('notifications.new', (payload: any) => {
-      if (!mounted) return;
-      if (payload?.type !== 'ESCROW') return;
+      if (!mounted || payload?.type !== 'ESCROW') return;
       const convoId = payload?.data?.conversationId;
-      if (activeThread && (!convoId || convoId === activeThread.id)) refreshActiveEscrow();
+      const currentThread = activeThreadRef.current;
+      if (currentThread && (!convoId || convoId === currentThread.id)) refreshActiveEscrow();
     });
     socket.on('escrow.update', (payload: any) => {
-      if (!payload?.escrowId || !activeThread) return;
+      const currentThread = activeThreadRef.current;
+      if (!payload?.escrowId || !currentThread) return;
       const convoId = payload?.conversationId;
-      if (convoId && convoId !== activeThread.id) return;
+      if (convoId && convoId !== currentThread.id) return;
       refreshActiveEscrow();
     });
     return () => {
       mounted = false;
       socket.disconnect();
     };
-  }, [activeThread?.id, isMarketplaceConversation]);
+  }, [mergeConversationMessages, updateConversationReaction]);
 
   const isPoster = useMemo(() => {
     if (!activeThread) return false;
@@ -373,7 +450,7 @@ export default function MarketplaceMessages() {
     if (!activeThread || !input.trim()) return;
     const res = await messagesService.sendMessage(activeThread.id, input.trim());
     const msg = res?.message || res;
-    setMessages((prev) => [...prev, msg]);
+    mergeConversationMessages(activeThread.id, [msg]);
     setInput('');
   };
 
@@ -426,7 +503,7 @@ export default function MarketplaceMessages() {
         const body = `Attachment: ${file.name}\n${viewUrl}`;
         const res = await messagesService.sendMessage(activeThread.id, body);
         const msg = res?.message || res;
-        setMessages((prev) => [...prev, msg]);
+        mergeConversationMessages(activeThread.id, [msg]);
       }
       toast.success(files.length > 1 ? 'Attachments sent' : 'Attachment sent');
     } catch (error: any) {
@@ -470,10 +547,8 @@ export default function MarketplaceMessages() {
   const toggleReaction = async (messageId: string, emoji: string) => {
     try {
       const res = await messagesService.toggleReaction(messageId, emoji);
-      if (res?.reactions) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, reactions: res.reactions } : m)),
-        );
+      if (res?.reactions && activeThread) {
+        updateConversationReaction(activeThread.id, messageId, res.reactions);
       }
     } catch {
       // ignore
@@ -539,9 +614,15 @@ export default function MarketplaceMessages() {
         generalInitialMessage.trim() || undefined
       );
       const conversation = response?.conversation || response;
+      const generalThreads = [
+        conversation,
+        ...threadCacheRef.current.GENERAL.filter((item) => item.id !== conversation.id),
+      ];
+      threadCacheRef.current.GENERAL = generalThreads;
       setInboxFilter('GENERAL');
-      setThreads((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
+      setThreads(generalThreads);
       setActiveThread(conversation);
+      activeThreadRef.current = conversation;
       setGeneralUserQuery('');
       setGeneralUserResults([]);
       setSelectedGeneralUser(null);
@@ -557,16 +638,31 @@ export default function MarketplaceMessages() {
     try {
       if (inboxFilter === 'ARCHIVED' || activeThread.isArchived) {
         await messagesService.restoreThread(activeThread.id);
-        setThreads((current) => current.filter((item) => item.id !== activeThread.id));
+        const restoredThread = { ...activeThread, isArchived: false };
+        threadCacheRef.current.ARCHIVED = threadCacheRef.current.ARCHIVED.filter((item) => item.id !== activeThread.id);
+        const targetFilter: InboxFilter = restoredThread.type === 'GENERAL' ? 'GENERAL' : 'MARKETPLACE';
+        threadCacheRef.current[targetFilter] = [
+          restoredThread,
+          ...threadCacheRef.current[targetFilter].filter((item) => item.id !== activeThread.id),
+        ];
+        setThreads(threadCacheRef.current.ARCHIVED);
         setActiveThread(null);
+        activeThreadRef.current = null;
         setMessages([]);
         toast.success('Conversation restored');
       } else {
         await messagesService.archiveThread(activeThread.id);
-        setThreads((current) => current.filter((item) => item.id !== activeThread.id));
+        const archivedThread = { ...activeThread, isArchived: true };
+        threadCacheRef.current[inboxFilter] = threadCacheRef.current[inboxFilter].filter((item) => item.id !== activeThread.id);
+        threadCacheRef.current.ARCHIVED = [
+          archivedThread,
+          ...threadCacheRef.current.ARCHIVED.filter((item) => item.id !== activeThread.id),
+        ];
+        setThreads(threadCacheRef.current[inboxFilter]);
         setActiveThread(null);
+        activeThreadRef.current = null;
         setMessages([]);
-        toast.success('Conversation archived');
+        toast.success('Conversation archived. Open the Archived tab to restore it.');
       }
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Unable to update conversation');
@@ -582,22 +678,22 @@ export default function MarketplaceMessages() {
           <input className="w-full rounded-full bg-white/5 px-4 py-2 text-sm" placeholder="Search" />
           <div className="mt-3 flex gap-2 text-xs">
             <button
-              onClick={() => setInboxFilter('MARKETPLACE')}
+              onClick={() => changeInboxFilter('MARKETPLACE')}
               className={inboxFilter === 'MARKETPLACE' ? 'rounded-full bg-pink-600/20 px-3 py-1' : 'rounded-full border border-white/10 px-3 py-1 text-zinc-400'}
             >
               Marketplace
             </button>
             <button
-              onClick={() => setInboxFilter('GENERAL')}
+              onClick={() => changeInboxFilter('GENERAL')}
               className={inboxFilter === 'GENERAL' ? 'rounded-full bg-pink-600/20 px-3 py-1' : 'rounded-full border border-white/10 px-3 py-1 text-zinc-400'}
             >
               General
             </button>
             <button
-              onClick={() => setInboxFilter('ARCHIVED')}
+              onClick={() => changeInboxFilter('ARCHIVED')}
               className={inboxFilter === 'ARCHIVED' ? 'rounded-full bg-pink-600/20 px-3 py-1' : 'rounded-full border border-white/10 px-3 py-1 text-zinc-400'}
             >
-              Archive
+              Archived
             </button>
           </div>
           {inboxFilter === 'GENERAL' && (
@@ -667,7 +763,7 @@ export default function MarketplaceMessages() {
             {threads.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setActiveThread(t)}
+                onClick={() => selectThread(t)}
                 className={`w-full rounded-2xl border px-3 py-2 text-left text-xs ${
                   activeThread?.id === t.id ? 'border-pink-500/60 bg-white/5' : 'border-white/10'
                 }`}
@@ -689,7 +785,7 @@ export default function MarketplaceMessages() {
                 onClick={handleArchiveState}
                 className="rounded-full border border-white/10 px-3 py-1 text-xs text-zinc-400"
               >
-                {inboxFilter === 'ARCHIVED' || activeThread.isArchived ? 'Restore' : 'Archive'}
+                {inboxFilter === 'ARCHIVED' || activeThread.isArchived ? 'Restore conversation' : 'Archive conversation'}
               </button>
             )}
           </div>
