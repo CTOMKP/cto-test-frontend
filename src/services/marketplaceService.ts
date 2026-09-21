@@ -12,7 +12,7 @@ export const marketplaceService = {
   async getPricing() {
     const res = await axios.get(`${backendUrl}/api/v1/marketplace/pricing`);
     const responseData = res.data?.data || res.data;
-    return responseData?.items || responseData || [];
+    return responseData || {};
   },
 
   async createDraft(payload: any) {

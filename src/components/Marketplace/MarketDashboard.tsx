@@ -28,6 +28,32 @@ type PricingRow = {
   label?: string;
 };
 
+type MarketplaceSubcategory = {
+  id: string;
+  name: string;
+  priceUsd?: number;
+  active?: boolean;
+};
+
+type MarketplaceCategory = {
+  id: string;
+  name: string;
+  defaultPriceUsd?: number;
+  active?: boolean;
+  subcategories?: MarketplaceSubcategory[];
+};
+
+type MarketplacePricingCatalog = {
+  items?: PricingRow[];
+  categories?: MarketplaceCategory[];
+  addons?: Array<{
+    id: string;
+    name: string;
+    priceUsd?: number;
+    active?: boolean;
+  }>;
+};
+
 type AdDraft = {
   postType: PostType;
   durationMode: 'SINGULAR' | 'RECURRING';
@@ -165,6 +191,7 @@ export default function MarketDashboard() {
   const [step, setStep] = useState<StepKey>('market');
   const [draft, setDraft] = useState<AdDraft>(DEFAULT_DRAFT);
   const [pricing, setPricing] = useState<PricingRow[]>(DEFAULT_PRICING);
+  const [catalogCategories, setCatalogCategories] = useState<MarketplaceCategory[]>([]);
   const [publicAds, setPublicAds] = useState<any[]>([]);
   const [publicAdsLoading, setPublicAdsLoading] = useState(false);
   const [marketTab, setMarketTab] = useState<'forYou' | 'new' | 'trending'>('forYou');
@@ -178,7 +205,6 @@ export default function MarketDashboard() {
   const [solanaAddress, setSolanaAddress] = useState('');
   const [adsId] = useState('#432738');
   const [agreeRules, setAgreeRules] = useState(false);
-  const [subCategoryInput, setSubCategoryInput] = useState('');
   const [adId, setAdId] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -288,7 +314,6 @@ export default function MarketDashboard() {
           multiChainTag: !!ad.multiChainTag,
         }));
         setExistingImageUrls(Array.isArray(ad.images) ? ad.images.filter(Boolean) : []);
-        if (ad.subCategory) setSubCategoryInput(ad.subCategory);
       } catch {
         // leave defaults if draft load fails
       }
@@ -306,8 +331,39 @@ export default function MarketDashboard() {
     let mounted = true;
     marketplaceService
       .getPricing()
-      .then((rows) => {
-        if (mounted && rows?.length) setPricing(rows);
+      .then((catalog: MarketplacePricingCatalog | PricingRow[]) => {
+        if (!mounted) return;
+
+        if (Array.isArray(catalog)) {
+          if (catalog.length) setPricing(catalog);
+          return;
+        }
+
+        const categories = Array.isArray(catalog?.categories)
+          ? catalog.categories.filter((category) => category.active !== false)
+          : [];
+        const catalogRows: PricingRow[] = [
+          ...categories.map((category) => ({
+            kind: 'CATEGORY' as const,
+            key: category.id,
+            label: category.name,
+            amount: Number(category.defaultPriceUsd || 0),
+          })),
+          ...(Array.isArray(catalog?.addons)
+            ? catalog.addons
+                .filter((addon) => addon.active !== false)
+                .map((addon) => ({
+                  kind: 'ADDON' as const,
+                  key: addon.id,
+                  label: addon.name,
+                  amount: Number(addon.priceUsd || 0),
+                }))
+            : []),
+          ...(Array.isArray(catalog?.items) ? catalog.items : []),
+        ];
+
+        if (catalogRows.length) setPricing(catalogRows);
+        if (categories.length) setCatalogCategories(categories);
       })
       .catch(() => null);
     return () => {
@@ -350,11 +406,7 @@ export default function MarketDashboard() {
     };
   }, [marketTab]);
 
-  useEffect(() => {
-    if (subCategoryInput) {
-      setDraft((prev) => ({ ...prev, subCategory: subCategoryInput }));
-    }
-  }, [subCategoryInput]);
+
 
   useEffect(() => {
     const loadWallet = async () => {
@@ -449,7 +501,21 @@ export default function MarketDashboard() {
     }
   }, [privyUser]);
 
-  const subOptions = useMemo(() => SUBCATEGORY_MAP[draft.category] || [], [draft.category]);
+  const categoryOptions = useMemo(
+    () => (catalogCategories.length ? catalogCategories.map((category) => category.name) : CATEGORIES),
+    [catalogCategories]
+  );
+  const subOptions = useMemo(() => {
+    const category = catalogCategories.find(
+      (item) => item.name === draft.category || item.id === draft.category
+    );
+    if (category) {
+      return (category.subcategories || [])
+        .filter((subcategory) => subcategory.active !== false)
+        .map((subcategory) => subcategory.name);
+    }
+    return SUBCATEGORY_MAP[draft.category] || [];
+  }, [catalogCategories, draft.category]);
   const maxImages = draft.tier === 'FREE' ? 3 : 5;
   const orderedAds = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -987,7 +1053,7 @@ export default function MarketDashboard() {
             <div className="mx-auto mt-8 max-w-xl rounded-3xl border border-white/10 bg-black/60 p-8">
               <p className="text-sm font-semibold text-white">Category*</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {CATEGORIES.map((cat) => (
+                {categoryOptions.map((cat) => (
                   <button
                     key={cat}
                     className={`rounded-xl border px-4 py-2 text-xs uppercase tracking-[0.25em] ${
@@ -1009,19 +1075,13 @@ export default function MarketDashboard() {
                   value={draft.subCategory}
                   onChange={(event) => updateDraft({ subCategory: event.target.value })}
                 >
-                  <option value="">Select or input sub category</option>
+                  <option value="">Select a subcategory</option>
                   {subOptions.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
                     </option>
                   ))}
                 </select>
-                <input
-                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/60 p-3 text-sm"
-                  placeholder="Be more specific (e.g. Smart Contract Dev, Meme Designer, Space Host)"
-                  value={subCategoryInput}
-                  onChange={(event) => setSubCategoryInput(event.target.value)}
-                />
               </div>
               <button
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
