@@ -1083,6 +1083,12 @@ export default function MarketDashboard() {
                   ))}
                 </select>
               </div>
+              <input
+                className="mt-3 w-full rounded-xl border border-white/10 bg-black/60 p-3 text-sm"
+                placeholder="Be more specific (e.g. Smart Contract Dev, Meme Designer, Space Host)"
+                value={draft.roleType}
+                onChange={(event) => updateDraft({ roleType: event.target.value })}
+              />
               <button
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
                 onClick={() => setStep('details')}
@@ -1183,18 +1189,13 @@ export default function MarketDashboard() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Role Type</label>
-                  <select
+                  <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Specific Role / Service</label>
+                  <input
                     className="w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-sm"
                     value={draft.roleType}
                     onChange={(event) => updateDraft({ roleType: event.target.value })}
-                  >
-                    {ROLE_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="e.g. UI/UX Designer, Smart Contract Dev, Space Host"
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs uppercase tracking-[0.3em] text-zinc-400">Tools/Stack</label>
