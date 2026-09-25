@@ -115,7 +115,7 @@ const DEFAULT_DRAFT: AdDraft = {
   images: [],
   imagePreviews: [],
   blockchainFocus: 'Solana',
-  roleType: 'Designer',
+  roleType: '',
   toolsStack: 'Adobe Illustrator',
   paymentType: 'USDC.e',
   amount: '',
@@ -667,7 +667,7 @@ export default function MarketDashboard() {
       tags: [],
       contactInfo: '',
       chain: draft.blockchainFocus ? draft.blockchainFocus.toUpperCase() : undefined,
-      offerType: draft.roleType,
+      offerType: draft.roleType.trim(),
       priceAmount,
       priceCurrency: draft.paymentType,
       images: imageUrls,
@@ -1092,7 +1092,7 @@ export default function MarketDashboard() {
               <button
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-pink-500 to-amber-400 px-6 py-3 text-sm font-semibold text-black"
                 onClick={() => setStep('details')}
-                disabled={!draft.category || !draft.subCategory}
+                disabled={!draft.category || !draft.subCategory || !draft.roleType.trim()}
               >
                 Create post
               </button>
