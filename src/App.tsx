@@ -26,13 +26,11 @@ import MarketplaceUserProfile from './components/Marketplace/MarketplaceUserProf
 import { TwoPhaseTesting } from './components/TwoPhaseTesting';
 import { useAuth } from './hooks/useAuth';
 import { ROUTES } from './utils/constants';
-
-const CREATOR_PROGRAM_URL =
-  process.env.REACT_APP_CREATOR_PROGRAM_URL || 'https://earn.ctomarketplace.com';
+import { openCreatorProgram } from './services/creatorHandoffService';
 
 const CreatorProgramRedirect: React.FC = () => {
   useEffect(() => {
-    window.location.replace(CREATOR_PROGRAM_URL);
+    void openCreatorProgram();
   }, []);
   return null;
 };

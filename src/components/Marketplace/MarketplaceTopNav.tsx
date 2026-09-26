@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import NotificationsBell from '../Notifications/NotificationsBell';
 import MessagesBell from '../Messages/MessagesBell';
 import { getStoredRewardData } from '../../utils/rewardStorage';
+import { openCreatorProgram } from '../../services/creatorHandoffService';
 
 export default function MarketplaceTopNav() {
   const rewards = useMemo(() => getStoredRewardData(), []);
@@ -26,6 +27,10 @@ export default function MarketplaceTopNav() {
             <span>Forum</span>
             <a
               href={process.env.REACT_APP_CREATOR_PROGRAM_URL || 'https://earn.ctomarketplace.com'}
+              onClick={(event) => {
+                event.preventDefault();
+                void openCreatorProgram();
+              }}
             >
               Earn
             </a>
